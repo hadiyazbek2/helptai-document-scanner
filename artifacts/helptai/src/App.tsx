@@ -18,6 +18,7 @@ import {
   Video,
   X,
 } from 'lucide-react';
+import { downloadDocx, downloadPdf, downloadPptx } from '@/lib/exports';
 
 type View = 'home' | 'processing' | 'review' | 'patch';
 type ToastTone = 'sage' | 'amber';
@@ -515,7 +516,10 @@ function App() {
   };
 
   const handleExport = (format: string) => {
-    setToast({ message: `${format} export is ready to connect — your document is safely prepared.`, tone: 'sage' });
+    if (format === 'PDF') downloadPdf(documentName);
+    if (format === 'Word') downloadDocx(documentName);
+    if (format === 'PowerPoint') downloadPptx(documentName);
+    setToast({ message: `${format} export downloaded — your document is safely prepared.`, tone: 'sage' });
   };
 
   const finishPatch = () => {

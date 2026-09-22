@@ -1,0 +1,17 @@
+{
+  "name": "helptai",
+  "short_name": "helptai",
+  "description": "Turn one scroll through a document into a clean, exportable file.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#F7F3EC",
+  "theme_color": "#5B7FA6",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
