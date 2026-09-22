@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/"
+title = "helptai"
+description = "A mobile-first document capture app that turns one continuous scroll-through video into a clean, reviewable document with flagged sections and export options."
+version = "1.0.0"
+id = "artifacts/helptai"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 20397
+
+[services.development]
+run = "pnpm --filter @workspace/helptai run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/helptai", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/helptai/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "20397"
+BASE_PATH = "/"
