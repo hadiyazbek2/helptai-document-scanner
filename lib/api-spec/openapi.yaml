@@ -10,6 +10,8 @@ servers:
 tags:
   - name: health
     description: Health operations
+  - name: processing
+    description: Document processing operations
 paths:
   /healthz:
     get:
@@ -24,6 +26,29 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+  /process-document:
+    post:
+      operationId: processDocument
+      tags: [processing]
+      summary: Analyze selected document frames
+      description: Sends locally filtered document frames to Gemini for ordered text extraction and confidence scoring.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProcessDocumentInput"
+      responses:
+        "200":
+          description: Reconstructed document analysis
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProcessDocumentResult"
+        "400":
+          description: Invalid frames
+        "502":
+          description: AI analysis unavailable
 components:
   schemas:
     HealthStatus:
@@ -33,4 +58,86 @@ components:
           type: string
       required:
         - status
+    ProcessFrame:
+      type: object
+      properties:
+        dataUrl:
+          type: string
+          minLength: 32
+        timestamp:
+          type: number
+          minimum: 0
+        sharpness:
+          type: number
+          minimum: 0
+        difference:
+          type: number
+          minimum: 0
+      required:
+        - dataUrl
+        - timestamp
+        - sharpness
+        - difference
+    ProcessDocumentInput:
+      type: object
+      properties:
+        documentName:
+          type: string
+          minLength: 1
+          maxLength: 160
+        frames:
+          type: array
+          minItems: 1
+          maxItems: 12
+          items:
+            $ref: "#/components/schemas/ProcessFrame"
+      required:
+        - documentName
+        - frames
+    ReconstructedPage:
+      type: object
+      properties:
+        pageNumber:
+          type: integer
+          minimum: 1
+        title:
+          type: string
+        text:
+          type: string
+        confidence:
+          type: number
+          minimum: 0
+          maximum: 1
+        needsReview:
+          type: boolean
+        reviewReason:
+          type: ["string", "null"]
+      required:
+        - pageNumber
+        - title
+        - text
+        - confidence
+        - needsReview
+        - reviewReason
+    ProcessDocumentResult:
+      type: object
+      properties:
+        documentName:
+          type: string
+        pages:
+          type: array
+          items:
+            $ref: "#/components/schemas/ReconstructedPage"
+        selectedFrameCount:
+          type: integer
+        discardedFrameCount:
+          type: integer
+        processingNote:
+          type: string
+      required:
+        - documentName
+        - pages
+        - selectedFrameCount
+        - discardedFrameCount
+        - processingNote
 

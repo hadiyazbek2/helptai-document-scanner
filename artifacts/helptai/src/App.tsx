@@ -19,9 +19,25 @@ import {
   X,
 } from 'lucide-react';
 import { downloadDocx, downloadPdf, downloadPptx } from '@/lib/exports';
+import { selectVideoFrames, type SelectedFrame } from '@/lib/video-processing';
 
 type View = 'home' | 'processing' | 'review' | 'patch';
 type ToastTone = 'sage' | 'amber';
+type ReconstructedPage = {
+  pageNumber: number;
+  title: string;
+  text: string;
+  confidence: number;
+  needsReview: boolean;
+  reviewReason: string | null;
+};
+type DocumentAnalysis = {
+  documentName: string;
+  pages: ReconstructedPage[];
+  selectedFrameCount: number;
+  discardedFrameCount: number;
+  processingNote: string;
+};
 
 function Mark() {
   return (
@@ -154,39 +170,54 @@ function HomeView({
   );
 }
 
-function ProcessingView({ documentName }: { documentName: string }) {
+function ProcessingView({
+  documentName,
+  status,
+  error,
+  onReset,
+}: {
+  documentName: string;
+  status: string;
+  error: string | null;
+  onReset: () => void;
+}) {
   return (
     <main className="processing-shell" data-testid="view-processing">
-      <div className="processing-orbit" aria-hidden="true"><LoaderCircle size={25} /></div>
-      <span className="eyebrow">quietly putting it in order</span>
-      <h1>Finding the pages.</h1>
+      <div className="processing-orbit" aria-hidden="true">
+        {error ? <X size={25} /> : <LoaderCircle size={25} />}
+      </div>
+      <span className="eyebrow">{error ? 'the capture needs another try' : 'quietly putting it in order'}</span>
+      <h1>{error ? 'We could not finish.' : 'Finding the pages.'}</h1>
       <p>
-        helptai is looking for clear edges, readable text, and the natural order of your capture. You can leave this screen open.
+        {error ?? 'helptai is looking for clear edges, readable text, and the natural order of your capture. You can leave this screen open.'}
       </p>
       <div className="progress-track" aria-label="Processing document" data-testid="progress-processing">
-        <div className="progress-fill" />
+        <div className={`progress-fill${error ? ' progress-error' : ''}`} />
       </div>
-      <span className="processing-note"><Film size={12} /> {documentName}</span>
+      <span className="processing-note"><Film size={12} /> {status || documentName}</span>
+      {error && <button className="button button-primary" style={{ marginTop: '1rem' }} onClick={onReset} data-testid="button-processing-reset">start over</button>}
     </main>
   );
 }
 
-function DocumentSheet() {
+function DocumentSheet({ page }: { page: ReconstructedPage | null }) {
+  const textLines = (page?.text || 'No readable text was returned for this page.')
+    .split(/\n+/)
+    .filter(Boolean)
+    .slice(0, 8);
   return (
     <div className="document-sheet" data-testid="preview-document-sheet">
       <div className="sheet-lines" />
       <div className="sheet-content">
-        <div className="sheet-topline"><span>field notes</span><span>page 04</span></div>
-        <h2 className="sheet-heading">The shape of a thought, once it has room to settle</h2>
+        <div className="sheet-topline"><span>reconstructed page</span><span>page {String(page?.pageNumber ?? 1).padStart(2, '0')}</span></div>
+        <h2 className="sheet-heading">{page?.title ?? 'Reconstructed document'}</h2>
         <div className="sheet-rule" />
         <div className="fake-copy" aria-label="Reconstructed page preview">
-          <i /><i /><i /><i /><i />
+          {textLines.map((line, index) => <i key={`${line}-${index}`} style={{ width: `${Math.min(96, Math.max(32, 44 + (line.length % 52)))}%` }} />)}
         </div>
-        <div className="fake-copy" style={{ marginTop: '1.3rem' }}>
-          <i style={{ width: '86%' }} /><i style={{ width: '94%' }} /><i style={{ width: '72%' }} />
-        </div>
+        <p className="sheet-text">{textLines.join(' ')}</p>
       </div>
-      <span className="sheet-foot">helptai · reconstructed</span>
+      <span className="sheet-foot">helptai · reconstructed · {Math.round((page?.confidence ?? 0) * 100)}% confidence</span>
     </div>
   );
 }
@@ -218,44 +249,62 @@ function ExportPanel({ onExport }: { onExport: (format: string) => void }) {
 
 function ReviewView({
   documentName,
+  analysis,
   patchDone,
+  selectedPageNumber,
+  onSelectPage,
   onPatch,
   onExport,
 }: {
   documentName: string;
+  analysis: DocumentAnalysis;
   patchDone: boolean;
+  selectedPageNumber: number;
+  onSelectPage: (pageNumber: number) => void;
   onPatch: () => void;
   onExport: (format: string) => void;
 }) {
+  const selectedPage = analysis.pages.find((page) => page.pageNumber === selectedPageNumber) ?? analysis.pages[0] ?? null;
+  const flaggedPage = analysis.pages.find((page) => page.needsReview) ?? null;
   return (
     <main className="review-page" data-testid="view-review">
       <div className="review-header">
         <div>
           <span className="eyebrow">document ready</span>
           <h1>{documentName}</h1>
-          <p>12 pages found · ordered from your capture</p>
+          <p>{analysis.pages.length} pages found · {analysis.selectedFrameCount} clear frames kept from your capture</p>
         </div>
         <span className="ready-badge" data-testid="status-document-ready"><Check size={13} /> ready</span>
       </div>
       <div className="review-grid">
         <div>
           <div className="thumb-strip" aria-label="Document pages">
-            {[1, 2, 3].map((page) => <div className="thumb" key={page} data-testid={`thumbnail-page-${page}`}><span>{String(page).padStart(2, '0')}</span></div>)}
-            <div className="thumb current" data-testid="thumbnail-page-4"><span>04</span></div>
-            {[5, 6, 7].map((page) => <div className="thumb" key={page} data-testid={`thumbnail-page-${page}`}><span>{String(page).padStart(2, '0')}</span></div>)}
+            {analysis.pages.map((page) => (
+              <button
+                className={`thumb${page.pageNumber === selectedPage?.pageNumber ? ' current' : ''}${page.needsReview ? ' thumb-flagged' : ''}`}
+                key={page.pageNumber}
+                onClick={() => onSelectPage(page.pageNumber)}
+                data-testid={`thumbnail-page-${page.pageNumber}`}
+                aria-label={`Open page ${page.pageNumber}${page.needsReview ? ', needs review' : ''}`}
+              >
+                <span>{String(page.pageNumber).padStart(2, '0')}</span>
+              </button>
+            ))}
           </div>
-          <DocumentSheet />
+          <DocumentSheet page={selectedPage} />
         </div>
         <aside className="review-sidebar">
           <div className="flag-card" data-testid="card-flagged-page">
-            <div className="flag-top"><span className="flag-dot" /> one page worth a closer look</div>
-            <h2>{patchDone ? 'Page 04 looks good.' : 'Check page 04'}</h2>
+            <div className="flag-top"><span className={`flag-dot${flaggedPage ? '' : ' flag-dot-clear'}`} /> {flaggedPage ? 'one page worth a closer look' : 'the capture looks complete'}</div>
+            <h2>{patchDone ? `Page ${String(flaggedPage?.pageNumber ?? 1).padStart(2, '0')} looks good.` : flaggedPage ? `Check page ${String(flaggedPage.pageNumber).padStart(2, '0')}` : 'No gaps found.'}</h2>
             <p>
               {patchDone
                 ? 'Your new photo is in place. The page has been refreshed in the document.'
-                : 'The text was a little hard to read from the scroll. A quick photo here will make the final document clearer.'}
+                : flaggedPage
+                  ? flaggedPage.reviewReason ?? 'The text was a little hard to read from the scroll.'
+                  : 'Each selected frame was readable enough to include in the reconstructed document.'}
             </p>
-            {!patchDone && (
+            {!patchDone && flaggedPage && (
               <button className="button button-primary" onClick={onPatch} data-testid="button-patch-page">
                 <ImagePlus size={16} />
                 add a patch photo
@@ -272,11 +321,13 @@ function ReviewView({
 }
 
 function PatchView({
+  pageNumber,
   onBack,
   onPatchComplete,
   patchImage,
   onPatchImage,
 }: {
+  pageNumber: number;
   onBack: () => void;
   onPatchComplete: () => void;
   patchImage: string | null;
@@ -337,14 +388,14 @@ function PatchView({
       <button className="back-button" onClick={onBack} data-testid="button-back-review"><ArrowLeft size={14} /> back to document</button>
       <div className="patch-header">
         <span className="eyebrow">a small second look</span>
-        <h1>Let’s make page 04 clearer.</h1>
+        <h1>Let’s make page {String(pageNumber).padStart(2, '0')} clearer.</h1>
         <p>Place the page flat in good light, then take a quick photo. This replaces only the flagged page — the rest of your document stays in place.</p>
       </div>
       <div className="patch-preview" data-testid="preview-patch-photo">
         {patchCameraOpen ? (
           <video ref={videoRef} autoPlay muted playsInline aria-label="Camera preview" data-testid="video-patch-camera" />
-        ) : patchImage ? (
-          <img src={patchImage} alt="Your replacement photo for page 04" data-testid="img-patch-photo" />
+          ) : patchImage ? (
+          <img src={patchImage} alt={`Your replacement photo for page ${pageNumber}`} data-testid="img-patch-photo" />
         ) : (
           <div className="preview-placeholder"><BookOpen size={30} /><span>your page will appear here</span></div>
         )}
@@ -425,6 +476,10 @@ function App() {
   const [view, setView] = useState<View>('home');
   const [documentName, setDocumentName] = useState('Untitled document');
   const [recentName, setRecentName] = useState<string | null>(null);
+  const [analysis, setAnalysis] = useState<DocumentAnalysis | null>(null);
+  const [selectedPageNumber, setSelectedPageNumber] = useState(1);
+  const [processingStatus, setProcessingStatus] = useState('Preparing your capture…');
+  const [processingError, setProcessingError] = useState<string | null>(null);
   const [patchDone, setPatchDone] = useState(false);
   const [patchImage, setPatchImage] = useState<string | null>(null);
   const [cameraOpen, setCameraOpen] = useState(false);
@@ -433,7 +488,7 @@ function App() {
   const [toast, setToast] = useState<{ message: string; tone: ToastTone } | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
-  const processingTimerRef = useRef<number | null>(null);
+  const recordingChunksRef = useRef<Blob[]>([]);
 
   useEffect(() => {
     if (videoRef.current && stream) videoRef.current.srcObject = stream;
@@ -441,16 +496,7 @@ function App() {
 
   useEffect(() => () => {
     stream?.getTracks().forEach((track) => track.stop());
-    if (processingTimerRef.current) window.clearTimeout(processingTimerRef.current);
   }, [stream]);
-
-  useEffect(() => {
-    if (view !== 'processing') return;
-    processingTimerRef.current = window.setTimeout(() => setView('review'), 3300);
-    return () => {
-      if (processingTimerRef.current) window.clearTimeout(processingTimerRef.current);
-    };
-  }, [view]);
 
   useEffect(() => {
     if (!toast) return;
@@ -458,15 +504,45 @@ function App() {
     return () => window.clearTimeout(timeout);
   }, [toast]);
 
-  const beginProcessing = (name: string) => {
-    setDocumentName(name.replace(/\.[^/.]+$/, '') || 'Untitled document');
+  const beginProcessing = async (name: string, file: File) => {
+    const cleanName = name.replace(/\.[^/.]+$/, '') || 'Untitled document';
+    setDocumentName(cleanName);
     setPatchDone(false);
     setPatchImage(null);
+    setAnalysis(null);
+    setSelectedPageNumber(1);
+    setProcessingError(null);
+    setProcessingStatus('Opening the capture…');
     setView('processing');
+
+    try {
+      const frames = await selectVideoFrames(file, setProcessingStatus);
+      if (!frames.length) throw new Error('No clear page frames were found in this video.');
+      setProcessingStatus(`Sending ${frames.length} clear frames for text extraction…`);
+      const response = await fetch('/api/process-document', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ documentName: cleanName, frames }),
+      });
+      const payload = await response.json().catch(() => null) as Partial<DocumentAnalysis> & { error?: string } | null;
+      if (!response.ok) {
+        throw new Error(payload?.error || 'The document could not be analyzed.');
+      }
+      if (!payload?.pages?.length) {
+        throw new Error('No reconstructed pages were returned for this capture.');
+      }
+      const result = payload as DocumentAnalysis;
+      setAnalysis(result);
+      setSelectedPageNumber(result.pages.find((page) => page.needsReview)?.pageNumber ?? result.pages[0].pageNumber);
+      setProcessingStatus('Document reconstructed.');
+      setView('review');
+    } catch (error) {
+      setProcessingError(error instanceof Error ? error.message : 'The document could not be processed.');
+    }
   };
 
   const handleFile = (file: File) => {
-    beginProcessing(file.name);
+    void beginProcessing(file.name, file);
   };
 
   const startCamera = async () => {
@@ -486,8 +562,26 @@ function App() {
   const beginRecording = () => {
     if (!stream) return;
     try {
-      const recorder = new MediaRecorder(stream);
+      const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp9')
+        ? 'video/webm;codecs=vp9'
+        : MediaRecorder.isTypeSupported('video/webm')
+          ? 'video/webm'
+          : '';
+      const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
       recorderRef.current = recorder;
+      recordingChunksRef.current = [];
+      recorder.ondataavailable = (event) => {
+        if (event.data.size) recordingChunksRef.current.push(event.data);
+      };
+      recorder.onstop = () => {
+        const blob = new Blob(recordingChunksRef.current, { type: recorder.mimeType || 'video/webm' });
+        const file = new File([blob], 'Camera capture.webm', { type: blob.type });
+        stream?.getTracks().forEach((track) => track.stop());
+        setStream(null);
+        setRecording(false);
+        setCameraOpen(false);
+        void beginProcessing(file.name, file);
+      };
       recorder.start();
       setRecording(true);
     } catch {
@@ -497,11 +591,6 @@ function App() {
 
   const stopRecording = () => {
     recorderRef.current?.stop();
-    stream?.getTracks().forEach((track) => track.stop());
-    setStream(null);
-    setRecording(false);
-    setCameraOpen(false);
-    beginProcessing('Camera capture');
   };
 
   const reset = () => {
@@ -511,6 +600,10 @@ function App() {
     setRecording(false);
     setView('home');
     setRecentName(null);
+    setAnalysis(null);
+    setProcessingError(null);
+    setProcessingStatus('Preparing your capture…');
+    setSelectedPageNumber(1);
     setPatchImage(null);
     setPatchDone(false);
   };
@@ -525,7 +618,13 @@ function App() {
   const finishPatch = () => {
     setPatchDone(true);
     setView('review');
-    setToast({ message: 'Page 04 has been refreshed.', tone: 'sage' });
+    setToast({ message: `Page ${String(selectedPageNumber).padStart(2, '0')} has been refreshed.`, tone: 'sage' });
+  };
+
+  const flaggedPage = analysis?.pages.find((page) => page.needsReview) ?? null;
+  const openPatch = () => {
+    if (flaggedPage) setSelectedPageNumber(flaggedPage.pageNumber);
+    setView('patch');
   };
 
   useEffect(() => {
@@ -537,10 +636,11 @@ function App() {
       <div className="page-wrap">
         <BrandHeader onReset={reset} />
         {view === 'home' && <HomeView onCamera={startCamera} onFile={handleFile} recentName={recentName} />}
-        {view === 'processing' && <ProcessingView documentName={documentName} />}
-        {view === 'review' && <ReviewView documentName={documentName} patchDone={patchDone} onPatch={() => setView('patch')} onExport={handleExport} />}
-        {view === 'patch' && (
+        {view === 'processing' && <ProcessingView documentName={documentName} status={processingStatus} error={processingError} onReset={reset} />}
+        {view === 'review' && analysis && <ReviewView documentName={documentName} analysis={analysis} patchDone={patchDone} selectedPageNumber={selectedPageNumber} onSelectPage={setSelectedPageNumber} onPatch={openPatch} onExport={handleExport} />}
+        {view === 'patch' && analysis && (
           <PatchView
+            pageNumber={flaggedPage?.pageNumber ?? selectedPageNumber}
             onBack={() => setView('review')}
             onPatchComplete={finishPatch}
             patchImage={patchImage}
