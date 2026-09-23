@@ -21,7 +21,7 @@ import {
 import { downloadDocx, downloadPdf, downloadPptx } from '@/lib/exports';
 import { selectVideoFrames, type SelectedFrame } from '@/lib/video-processing';
 
-type View = 'home' | 'processing' | 'review' | 'patch';
+type View = 'home' | 'frames' | 'processing' | 'review' | 'patch';
 type ToastTone = 'sage' | 'amber';
 type ReconstructedPage = {
   pageNumber: number;
@@ -30,6 +30,7 @@ type ReconstructedPage = {
   confidence: number;
   needsReview: boolean;
   reviewReason: string | null;
+  sourceFrame?: SelectedFrame;
 };
 type DocumentAnalysis = {
   documentName: string;
@@ -207,6 +208,52 @@ function ProcessingView({
   );
 }
 
+function FrameReviewView({
+  documentName,
+  frames,
+  onContinue,
+  onReset,
+}: {
+  documentName: string;
+  frames: SelectedFrame[];
+  onContinue: () => void;
+  onReset: () => void;
+}) {
+  return (
+    <main className="frame-review-page" data-testid="view-frame-review">
+      <div className="frame-review-header">
+        <div>
+          <span className="eyebrow">a clear look before reconstruction</span>
+          <h1>These are the frames we kept.</h1>
+          <p>
+            helptai filtered out blurry and repeated moments on this device. Nothing has been sent for text extraction yet.
+          </p>
+        </div>
+        <span className="frame-count" data-testid="text-selected-frame-count">{frames.length} best frames</span>
+      </div>
+      <div className="frame-review-grid" aria-label={`Best frames from ${documentName}`}>
+        {frames.map((frame, index) => (
+          <figure className="chosen-frame" key={`${frame.timestamp}-${index}`} data-testid={`selected-frame-${index + 1}`}>
+            <img src={frame.dataUrl} alt={`Selected document frame ${index + 1}`} />
+            <figcaption>
+              <strong>candidate {String(index + 1).padStart(2, '0')}</strong>
+              <span>{frame.timestamp.toFixed(1)}s · {Math.round(frame.sharpness * 100)}% clarity</span>
+            </figcaption>
+          </figure>
+        ))}
+      </div>
+      <div className="frame-review-actions">
+        <button className="button button-primary" onClick={onContinue} data-testid="button-continue-frame-review">
+          <Sparkles size={16} />
+          reconstruct from these frames
+          <ArrowRight size={15} />
+        </button>
+        <button className="button button-quiet" onClick={onReset} data-testid="button-reset-frame-review">choose another video</button>
+      </div>
+    </main>
+  );
+}
+
 function DocumentSheet({ page }: { page: ReconstructedPage | null }) {
   const textLines = (page?.text || 'No readable text was returned for this page.')
     .split(/\n+/)
@@ -217,12 +264,23 @@ function DocumentSheet({ page }: { page: ReconstructedPage | null }) {
       <div className="sheet-lines" />
       <div className="sheet-content">
         <div className="sheet-topline"><span>reconstructed page</span><span>page {String(page?.pageNumber ?? 1).padStart(2, '0')}</span></div>
-        <h2 className="sheet-heading">{page?.title ?? 'Reconstructed document'}</h2>
-        <div className="sheet-rule" />
-        <div className="fake-copy" aria-label="Reconstructed page preview">
-          {textLines.map((line, index) => <i key={`${line}-${index}`} style={{ width: `${Math.min(96, Math.max(32, 44 + (line.length % 52)))}%` }} />)}
-        </div>
-        <p className="sheet-text">{textLines.join(' ')}</p>
+        {page?.sourceFrame ? (
+          <img
+            className="sheet-image"
+            src={page.sourceFrame.dataUrl}
+            alt={`Image-faithful layout for reconstructed page ${page.pageNumber}`}
+          />
+        ) : (
+          <>
+            <h2 className="sheet-heading">{page?.title ?? 'Reconstructed document'}</h2>
+            <div className="sheet-rule" />
+            <div className="fake-copy" aria-label="Reconstructed page preview">
+              {textLines.map((line, index) => <i key={`${line}-${index}`} style={{ width: `${Math.min(96, Math.max(32, 44 + (line.length % 52)))}%` }} />)}
+            </div>
+          </>
+        )}
+        <div className="sheet-ocr-label">extracted text</div>
+        <p className="sheet-text">{page?.text || 'No readable text was returned for this page.'}</p>
       </div>
       <span className="sheet-foot">helptai · reconstructed · {Math.round((page?.confidence ?? 0) * 100)}% confidence</span>
     </div>
@@ -484,6 +542,7 @@ function App() {
   const [documentName, setDocumentName] = useState('Untitled document');
   const [recentName, setRecentName] = useState<string | null>(null);
   const [analysis, setAnalysis] = useState<DocumentAnalysis | null>(null);
+  const [selectedFrames, setSelectedFrames] = useState<SelectedFrame[]>([]);
   const [selectedPageNumber, setSelectedPageNumber] = useState(1);
   const [processingStatus, setProcessingStatus] = useState('Preparing your capture…');
   const [processingError, setProcessingError] = useState<string | null>(null);
@@ -519,6 +578,7 @@ function App() {
     setPatchDone(false);
     setPatchImage(null);
     setAnalysis(null);
+    setSelectedFrames([]);
     setSelectedPageNumber(1);
     setProcessingError(null);
     setProcessingStatus('Opening the capture…');
@@ -527,11 +587,25 @@ function App() {
     try {
       const frames = await selectVideoFrames(file, setProcessingStatus);
       if (!frames.length) throw new Error('No clear page frames were found in this video.');
-      setProcessingStatus(`Sending ${frames.length} clear frames for text extraction…`);
+      setSelectedFrames(frames);
+      setProcessingStatus(`${frames.length} clear frames are ready to review.`);
+      setView('frames');
+    } catch (error) {
+      setProcessingError(error instanceof Error ? error.message : 'The document could not be processed.');
+    }
+  };
+
+  const analyzeFrames = async () => {
+    if (!selectedFrames.length) return;
+    setProcessingError(null);
+    setProcessingStatus(`Sending ${selectedFrames.length} clear frames for text extraction…`);
+    setView('processing');
+
+    try {
       const response = await fetch('/api/process-document', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ documentName: cleanName, frames }),
+        body: JSON.stringify({ documentName, frames: selectedFrames }),
       });
       const payload = await response.json().catch(() => null) as Partial<DocumentAnalysis> & { error?: string } | null;
       if (!response.ok) {
@@ -540,7 +614,13 @@ function App() {
       if (!payload?.pages?.length) {
         throw new Error('No reconstructed pages were returned for this capture.');
       }
-      const result = payload as DocumentAnalysis;
+      const result = {
+        ...(payload as DocumentAnalysis),
+        pages: payload.pages.map((page, index) => ({
+          ...page,
+          sourceFrame: selectedFrames[Math.min(index, selectedFrames.length - 1)],
+        })),
+      };
       setAnalysis(result);
       setSelectedPageNumber(result.pages.find((page) => page.needsReview)?.pageNumber ?? result.pages[0].pageNumber);
       setProcessingStatus('Document reconstructed.');
@@ -611,6 +691,7 @@ function App() {
     setRecentName(null);
     setAnalysis(null);
     setLastCapture(null);
+    setSelectedFrames([]);
     setProcessingError(null);
     setProcessingStatus('Preparing your capture…');
     setSelectedPageNumber(1);
@@ -646,7 +727,8 @@ function App() {
       <div className="page-wrap">
         <BrandHeader onReset={reset} />
         {view === 'home' && <HomeView onCamera={startCamera} onFile={handleFile} recentName={recentName} />}
-        {view === 'processing' && <ProcessingView documentName={documentName} status={processingStatus} error={processingError} onRetry={lastCapture ? () => void beginProcessing(lastCapture.name, lastCapture) : null} onReset={reset} />}
+        {view === 'frames' && <FrameReviewView documentName={documentName} frames={selectedFrames} onContinue={analyzeFrames} onReset={reset} />}
+        {view === 'processing' && <ProcessingView documentName={documentName} status={processingStatus} error={processingError} onRetry={selectedFrames.length ? analyzeFrames : lastCapture ? () => void beginProcessing(lastCapture.name, lastCapture) : null} onReset={reset} />}
         {view === 'review' && analysis && <ReviewView documentName={documentName} analysis={analysis} patchDone={patchDone} selectedPageNumber={selectedPageNumber} onSelectPage={setSelectedPageNumber} onPatch={openPatch} onExport={handleExport} />}
         {view === 'patch' && analysis && (
           <PatchView
