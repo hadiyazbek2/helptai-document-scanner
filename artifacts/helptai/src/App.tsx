@@ -174,11 +174,13 @@ function ProcessingView({
   documentName,
   status,
   error,
+  onRetry,
   onReset,
 }: {
   documentName: string;
   status: string;
   error: string | null;
+  onRetry: (() => void) | null;
   onReset: () => void;
 }) {
   return (
@@ -195,7 +197,12 @@ function ProcessingView({
         <div className={`progress-fill${error ? ' progress-error' : ''}`} />
       </div>
       <span className="processing-note"><Film size={12} /> {status || documentName}</span>
-      {error && <button className="button button-primary" style={{ marginTop: '1rem' }} onClick={onReset} data-testid="button-processing-reset">start over</button>}
+      {error && (
+        <div className="processing-error-actions">
+          {onRetry && <button className="button button-primary" onClick={onRetry} data-testid="button-processing-retry">try again</button>}
+          <button className="button button-quiet" style={{ marginTop: '1rem' }} onClick={onReset} data-testid="button-processing-reset">start over</button>
+        </div>
+      )}
     </main>
   );
 }
@@ -480,6 +487,7 @@ function App() {
   const [selectedPageNumber, setSelectedPageNumber] = useState(1);
   const [processingStatus, setProcessingStatus] = useState('Preparing your capture…');
   const [processingError, setProcessingError] = useState<string | null>(null);
+  const [lastCapture, setLastCapture] = useState<File | null>(null);
   const [patchDone, setPatchDone] = useState(false);
   const [patchImage, setPatchImage] = useState<string | null>(null);
   const [cameraOpen, setCameraOpen] = useState(false);
@@ -506,6 +514,7 @@ function App() {
 
   const beginProcessing = async (name: string, file: File) => {
     const cleanName = name.replace(/\.[^/.]+$/, '') || 'Untitled document';
+    setLastCapture(file);
     setDocumentName(cleanName);
     setPatchDone(false);
     setPatchImage(null);
@@ -601,6 +610,7 @@ function App() {
     setView('home');
     setRecentName(null);
     setAnalysis(null);
+    setLastCapture(null);
     setProcessingError(null);
     setProcessingStatus('Preparing your capture…');
     setSelectedPageNumber(1);
@@ -636,7 +646,7 @@ function App() {
       <div className="page-wrap">
         <BrandHeader onReset={reset} />
         {view === 'home' && <HomeView onCamera={startCamera} onFile={handleFile} recentName={recentName} />}
-        {view === 'processing' && <ProcessingView documentName={documentName} status={processingStatus} error={processingError} onReset={reset} />}
+        {view === 'processing' && <ProcessingView documentName={documentName} status={processingStatus} error={processingError} onRetry={lastCapture ? () => void beginProcessing(lastCapture.name, lastCapture) : null} onReset={reset} />}
         {view === 'review' && analysis && <ReviewView documentName={documentName} analysis={analysis} patchDone={patchDone} selectedPageNumber={selectedPageNumber} onSelectPage={setSelectedPageNumber} onPatch={openPatch} onExport={handleExport} />}
         {view === 'patch' && analysis && (
           <PatchView

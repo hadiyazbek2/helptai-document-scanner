@@ -5,6 +5,8 @@ import { ai } from "@workspace/integrations-gemini-ai";
 const router: IRouter = Router();
 
 const MAX_INLINE_FRAME_BYTES = 1_150_000;
+const SAFE_REQUESTS_PER_MINUTE = 12;
+const geminiRequestTimes: number[] = [];
 
 router.post("/process-document", async (req, res) => {
   const parsed = ProcessDocumentBody.safeParse(req.body);
@@ -28,11 +30,11 @@ router.post("/process-document", async (req, res) => {
 
   const prompt = buildPrompt(documentName, frames);
   try {
-    const response = await ai.models.generateContent({
+    const request = {
       model: "gemini-3.6-flash",
       contents: [
         {
-          role: "user",
+          role: "user" as const,
           parts: [
             { text: prompt },
             ...inlineFrames.flatMap((frame) =>
@@ -54,7 +56,8 @@ router.post("/process-document", async (req, res) => {
         maxOutputTokens: 8192,
         responseMimeType: "application/json",
       },
-    });
+    };
+    const response = await generateWithRetry(request);
 
     const result = parseModelResult(response.text ?? "");
     if (!result) {
@@ -73,12 +76,66 @@ router.post("/process-document", async (req, res) => {
     });
   } catch (error) {
     req.log.error({ err: error }, "Document analysis failed");
-    res.status(502).json({
-      error:
-        "The document could not be analyzed right now. Your original capture is still on this device.",
+    const quotaLimited = error instanceof GeminiQuotaError || getErrorStatus(error) === 429;
+    const temporarilyUnavailable = isTemporaryGeminiError(error);
+    res.status(quotaLimited ? 429 : temporarilyUnavailable ? 503 : 502).json({
+      error: quotaLimited
+        ? "Gemini's request limit has been reached for the moment. Please wait about a minute and try again."
+        : temporarilyUnavailable
+        ? "Gemini is temporarily busy. Please try this capture again in a moment."
+        : "The document could not be analyzed right now. Your original capture is still on this device.",
     });
   }
 });
+
+async function generateWithRetry(request: Parameters<typeof ai.models.generateContent>[0]) {
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      reserveGeminiRequest();
+      return await ai.models.generateContent(request);
+    } catch (error) {
+      if (!isTemporaryGeminiError(error) || attempt === 1) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 1200));
+    }
+  }
+  throw new Error("Gemini did not return an analysis.");
+}
+
+function isTemporaryGeminiError(error: unknown) {
+  if (!error || typeof error !== "object") return false;
+  const value = error as { status?: number; message?: string };
+  return (
+    value.status === 429 ||
+    value.status === 503 ||
+    /high demand|temporarily|unavailable|resource exhausted/i.test(value.message ?? "")
+  );
+}
+
+function getErrorStatus(error: unknown) {
+  return error && typeof error === "object" && "status" in error
+    ? Number((error as { status?: unknown }).status)
+    : undefined;
+}
+
+function reserveGeminiRequest() {
+  const now = Date.now();
+  while (geminiRequestTimes[0] && now - geminiRequestTimes[0] >= 60_000) {
+    geminiRequestTimes.shift();
+  }
+  if (geminiRequestTimes.length >= SAFE_REQUESTS_PER_MINUTE) {
+    throw new GeminiQuotaError();
+  }
+  geminiRequestTimes.push(now);
+}
+
+class GeminiQuotaError extends Error {
+  status = 429;
+
+  constructor() {
+    super("Local Gemini request safety limit reached");
+    this.name = "GeminiQuotaError";
+  }
+}
 
 function parseDataUrl(value: string) {
   const match = value.match(/^data:(image\/(?:jpeg|jpg|png|webp));base64,(.+)$/);
