@@ -51,6 +51,51 @@ export interface ProcessDocumentInput {
   frames: ProcessFrame[];
 }
 
+/**
+ * Region of an image as [ymin, xmin, ymax, xmax], each 0-1000 (fractions of the image height/width times 1000).
+ * @minItems 4
+ * @maxItems 4
+ * @items.minimum 0
+ * @items.maximum 1000
+ */
+export type Box = number[];
+
+export type PageBlockType = typeof PageBlockType[keyof typeof PageBlockType];
+
+
+export const PageBlockType = {
+  heading: 'heading',
+  paragraph: 'paragraph',
+  list: 'list',
+  table: 'table',
+  lines: 'lines',
+  caption: 'caption',
+  figure: 'figure',
+  header: 'header',
+  footer: 'footer',
+} as const;
+
+/**
+ * One piece of a page in reading order, so the page's structure can be rebuilt.
+ */
+export interface PageBlock {
+  type: PageBlockType;
+  /**
+     * Heading level (1 is the largest). Only for headings.
+     * @minimum 1
+     * @maximum 3
+     */
+  level?: number;
+  /** Text of the block. For type "lines" each line of the page is on its own line. */
+  text: string;
+  /** List items without their bullet or number. Only for lists. */
+  items?: string[];
+  /** Table rows, each a list of cell texts. Only for tables. */
+  rows?: string[][];
+  /** Where the block is in the best frame, or null if unknown. */
+  box: Box | null;
+}
+
 export interface ReconstructedPage {
   /** @minimum 1 */
   pageNumber: number;
@@ -75,6 +120,10 @@ export interface ReconstructedPage {
      * @minimum 0
      */
   bestFrameIndex: number;
+  /** Where the paper page is inside the best frame, or null if unknown. */
+  pageBox: Box | null;
+  /** The page's content in reading order. The same text as `text`, with structure and position. */
+  blocks: PageBlock[];
   /** Gemini model that produced this page. */
   modelUsed?: string;
 }

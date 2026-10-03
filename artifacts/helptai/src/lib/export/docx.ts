@@ -1,6 +1,7 @@
 import type { Doc, Page } from '../doc-model';
 import { fitInside, parseJpegDataUrl } from './jpeg';
-import { displayTitle, paragraphsOf, xmlEscape } from './text';
+import type { PageBlock } from '../layout';
+import { pageHeading, paragraphsOf, xmlEscape } from './text';
 import { zip } from './zip';
 
 const EMU_PER_INCH = 914400;
@@ -17,14 +18,62 @@ const XML = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n';
 const NAVY = '2E3A46';
 const AMBER_TEXT = '9A6A34';
 
-function paragraph(text: string, options: { style?: string; italic?: boolean; color?: string; pageBreakBefore?: boolean; keepNext?: boolean } = {}) {
+function paragraph(text: string, options: { style?: string; italic?: boolean; color?: string; pageBreakBefore?: boolean; keepNext?: boolean; keepLines?: boolean } = {}) {
   const props = [
     options.style ? `<w:pStyle w:val="${options.style}"/>` : '',
     options.keepNext ? '<w:keepNext/>' : '',
     options.pageBreakBefore ? '<w:pageBreakBefore/>' : '',
   ].join('');
   const runProps = [options.italic ? '<w:i/>' : '', options.color ? `<w:color w:val="${options.color}"/>` : ''].join('');
-  return `<w:p>${props ? `<w:pPr>${props}</w:pPr>` : ''}<w:r>${runProps ? `<w:rPr>${runProps}</w:rPr>` : ''}<w:t xml:space="preserve">${xmlEscape(text)}</w:t></w:r></w:p>`;
+  // Line breaks inside the text stay as line breaks (handwriting, code, poems).
+  const runs = text
+    .split('\n')
+    .map((line) => `<w:r>${runProps ? `<w:rPr>${runProps}</w:rPr>` : ''}<w:t xml:space="preserve">${xmlEscape(line)}</w:t></w:r>`)
+    .join(`<w:r>${runProps ? `<w:rPr>${runProps}</w:rPr>` : ''}<w:br/></w:r>`);
+  return `<w:p>${props ? `<w:pPr>${props}</w:pPr>` : ''}${runs}</w:p>`;
+}
+
+function table(rows: string[][]) {
+  const border = (side: string) => `<w:${side} w:val="single" w:sz="4" w:space="0" w:color="9AA5B1"/>`;
+  const columns = Math.max(...rows.map((row) => row.length));
+  const cells = (row: string[]) =>
+    row
+      .map((cell) => `<w:tc><w:tcPr><w:tcW w:w="${Math.floor(9360 / columns)}" w:type="dxa"/></w:tcPr>${paragraph(cell, { style: 'TableText' })}</w:tc>`)
+      .join('');
+  return `<w:tbl><w:tblPr><w:tblW w:w="9360" w:type="dxa"/><w:tblBorders>${['top', 'left', 'bottom', 'right', 'insideH', 'insideV'].map(border).join('')}</w:tblBorders><w:tblLayout w:type="fixed"/></w:tblPr><w:tblGrid>${Array.from({ length: columns }, () => `<w:gridCol w:w="${Math.floor(9360 / columns)}"/>`).join('')}</w:tblGrid>${rows.map((row) => `<w:tr>${cells(row)}</w:tr>`).join('')}</w:tbl><w:p><w:pPr><w:spacing w:after="0"/></w:pPr></w:p>`;
+}
+
+// A page's blocks as Word content, keeping headings, lists, tables and line breaks.
+function blockParagraphs(page: Page): string[] {
+  const title = page.title.trim().toLowerCase();
+  const out: string[] = [];
+  page.blocks.forEach((block: PageBlock, index) => {
+    switch (block.type) {
+      case 'heading':
+        // The page heading above already carries a matching title.
+        if (index === 0 && block.text.trim().toLowerCase() === title) break;
+        out.push(paragraph(block.text, { style: `Heading${Math.min(4, (block.level ?? 2) + 1)}` }));
+        break;
+      case 'list':
+        (block.items ?? []).forEach((item) => out.push(paragraph(`\u2022\t${item}`, { style: 'ListItem' })));
+        break;
+      case 'table':
+        if (block.rows?.length) out.push(table(block.rows));
+        break;
+      case 'caption':
+        out.push(paragraph(block.text, { style: 'CaptionText' }));
+        break;
+      case 'header':
+      case 'footer':
+        out.push(paragraph(block.text, { style: 'SmallText' }));
+        break;
+      case 'figure':
+        break; // the page image below shows it
+      default:
+        if (block.text) out.push(paragraph(block.text));
+    }
+  });
+  return out;
 }
 
 function imageParagraph(page: Page, relId: string, drawingId: number, width: number, height: number) {
@@ -39,6 +88,13 @@ const STYLES = `${XML}<w:styles xmlns:w="${NS_W}">
 <w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/><w:qFormat/><w:rPr><w:color w:val="${NAVY}"/></w:rPr></w:style>
 <w:style w:type="paragraph" w:styleId="Title"><w:name w:val="Title"/><w:basedOn w:val="Normal"/><w:next w:val="Normal"/><w:qFormat/><w:pPr><w:spacing w:before="0" w:after="60"/></w:pPr><w:rPr><w:rFonts w:ascii="Georgia" w:hAnsi="Georgia" w:cs="Georgia"/><w:b/><w:color w:val="${NAVY}"/><w:sz w:val="56"/><w:szCs w:val="56"/></w:rPr></w:style>
 <w:style w:type="paragraph" w:styleId="Subtitle"><w:name w:val="Subtitle"/><w:basedOn w:val="Normal"/><w:next w:val="Normal"/><w:qFormat/><w:pPr><w:spacing w:after="240"/></w:pPr><w:rPr><w:color w:val="5B7FA6"/><w:sz w:val="22"/><w:szCs w:val="22"/></w:rPr></w:style>
+<w:style w:type="paragraph" w:styleId="Heading2"><w:name w:val="heading 2"/><w:basedOn w:val="Normal"/><w:next w:val="Normal"/><w:qFormat/><w:pPr><w:keepNext/><w:spacing w:before="200" w:after="100"/><w:outlineLvl w:val="1"/></w:pPr><w:rPr><w:rFonts w:ascii="Georgia" w:hAnsi="Georgia" w:cs="Georgia"/><w:b/><w:color w:val="${NAVY}"/><w:sz w:val="30"/><w:szCs w:val="30"/></w:rPr></w:style>
+<w:style w:type="paragraph" w:styleId="Heading3"><w:name w:val="heading 3"/><w:basedOn w:val="Normal"/><w:next w:val="Normal"/><w:qFormat/><w:pPr><w:keepNext/><w:spacing w:before="160" w:after="80"/><w:outlineLvl w:val="2"/></w:pPr><w:rPr><w:rFonts w:ascii="Georgia" w:hAnsi="Georgia" w:cs="Georgia"/><w:b/><w:color w:val="${NAVY}"/><w:sz w:val="26"/><w:szCs w:val="26"/></w:rPr></w:style>
+<w:style w:type="paragraph" w:styleId="Heading4"><w:name w:val="heading 4"/><w:basedOn w:val="Normal"/><w:next w:val="Normal"/><w:qFormat/><w:pPr><w:keepNext/><w:spacing w:before="120" w:after="60"/><w:outlineLvl w:val="3"/></w:pPr><w:rPr><w:rFonts w:ascii="Georgia" w:hAnsi="Georgia" w:cs="Georgia"/><w:b/><w:color w:val="${NAVY}"/><w:sz w:val="24"/><w:szCs w:val="24"/></w:rPr></w:style>
+<w:style w:type="paragraph" w:styleId="ListItem"><w:name w:val="List Item"/><w:basedOn w:val="Normal"/><w:qFormat/><w:pPr><w:tabs><w:tab w:val="left" w:pos="360"/></w:tabs><w:spacing w:after="60"/><w:ind w:left="360" w:hanging="360"/></w:pPr></w:style>
+<w:style w:type="paragraph" w:styleId="CaptionText"><w:name w:val="Caption Text"/><w:basedOn w:val="Normal"/><w:qFormat/><w:pPr><w:spacing w:after="120"/></w:pPr><w:rPr><w:i/><w:color w:val="5B6671"/><w:sz w:val="20"/><w:szCs w:val="20"/></w:rPr></w:style>
+<w:style w:type="paragraph" w:styleId="SmallText"><w:name w:val="Small Text"/><w:basedOn w:val="Normal"/><w:qFormat/><w:pPr><w:spacing w:after="80"/></w:pPr><w:rPr><w:color w:val="6B7782"/><w:sz w:val="18"/><w:szCs w:val="18"/></w:rPr></w:style>
+<w:style w:type="paragraph" w:styleId="TableText"><w:name w:val="Table Text"/><w:basedOn w:val="Normal"/><w:pPr><w:spacing w:after="40" w:line="240" w:lineRule="auto"/></w:pPr><w:rPr><w:sz w:val="20"/><w:szCs w:val="20"/></w:rPr></w:style>
 <w:style w:type="paragraph" w:styleId="Heading1"><w:name w:val="heading 1"/><w:basedOn w:val="Normal"/><w:next w:val="Normal"/><w:qFormat/><w:pPr><w:keepNext/><w:spacing w:before="0" w:after="160"/><w:outlineLvl w:val="0"/></w:pPr><w:rPr><w:rFonts w:ascii="Georgia" w:hAnsi="Georgia" w:cs="Georgia"/><w:b/><w:color w:val="${NAVY}"/><w:sz w:val="36"/><w:szCs w:val="36"/></w:rPr></w:style>
 </w:styles>`;
 
@@ -60,12 +116,13 @@ export function buildDocx(doc: Doc, now = new Date()): Uint8Array {
     media.push({ name: `word/media/page-${index + 1}.jpg`, content: image.bytes });
     rels.push(`<Relationship Id="${relId}" Type="${REL}/image" Target="media/page-${index + 1}.jpg"/>`);
 
-    body.push(paragraph(displayTitle(page.title, page.pageNumber), { style: 'Heading1', pageBreakBefore: index > 0 }));
+    body.push(paragraph(pageHeading(page.title, page.pageNumber), { style: 'Heading1', pageBreakBefore: index > 0 }));
     if (page.status === 'needs-review') {
       body.push(paragraph(`Check this page — ${page.reviewReason ?? 'the text was hard to read from the scan.'}`, { italic: true, color: AMBER_TEXT }));
     }
-    const text = paragraphsOf(page.text);
-    if (text.length) text.forEach((line) => body.push(paragraph(line)));
+    // Pages without structure (older results) fall back to their plain text.
+    const content = page.blocks.length ? blockParagraphs(page) : paragraphsOf(page.text).map((line) => paragraph(line));
+    if (content.length) body.push(...content);
     else body.push(paragraph('No readable text was found for this page.', { italic: true }));
 
     const size = fitInside(image.width, image.height, 3.2, 4.2);

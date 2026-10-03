@@ -6,9 +6,12 @@
  * OpenAPI spec version: 0.1.0
  */
 
+export * from './box';
 export * from './errorResponse';
 export * from './errorResponseCode';
 export * from './healthStatus';
+export * from './pageBlock';
+export * from './pageBlockType';
 export * from './processDocumentInput';
 export * from './processDocumentResult';
 export * from './processFrame';

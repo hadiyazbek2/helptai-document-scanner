@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { downloadDocx, downloadPdf, downloadPptx } from '@/lib/export';
 import type { ProcessDocumentResult } from '@helptai/api-client-react';
+import { PageReplica } from '@/components/page-replica';
 import { buildDoc, type Doc, type Page } from '@/lib/doc-model';
 import { selectVideoFrames, type SelectedFrame } from '@/lib/video-processing';
 
@@ -240,32 +241,28 @@ function FrameReviewView({
 }
 
 function DocumentSheet({ page }: { page: Page | null }) {
-  const textLines = (page?.text || 'No readable text was returned for this page.')
-    .split(/\n+/)
-    .filter(Boolean)
-    .slice(0, 8);
   return (
     <div className="document-sheet" data-testid="preview-document-sheet">
-      <div className="sheet-lines" />
       <div className="sheet-content">
         <div className="sheet-topline"><span>reconstructed page</span><span>page {String(page?.pageNumber ?? 1).padStart(2, '0')}</span></div>
-        {page?.image ? (
-          <img
-            className="sheet-image"
-            src={page.image}
-            alt={`Image-faithful layout for reconstructed page ${page.pageNumber}`}
-          />
-        ) : (
-          <>
-            <h2 className="sheet-heading">{page?.title ?? 'Reconstructed document'}</h2>
-            <div className="sheet-rule" />
-            <div className="fake-copy" aria-label="Reconstructed page preview">
-              {textLines.map((line, index) => <i key={`${line}-${index}`} style={{ width: `${Math.min(96, Math.max(32, 44 + (line.length % 52)))}%` }} />)}
+        {page ? (
+          <div className="page-compare">
+            <div className="compare-pane">
+              <p className="compare-label">your photo</p>
+              <img className="sheet-image" src={page.image} alt={`Original photo of page ${page.pageNumber}`} />
             </div>
-          </>
+            <div className="compare-pane">
+              <p className="compare-label">rebuilt page</p>
+              <PageReplica page={page} />
+            </div>
+          </div>
+        ) : null}
+        {page?.text && (
+          <details className="sheet-plain">
+            <summary>plain text</summary>
+            <p className="sheet-text">{page.text}</p>
+          </details>
         )}
-        <div className="sheet-ocr-label">extracted text</div>
-        <p className="sheet-text">{page?.text || 'No readable text was returned for this page.'}</p>
       </div>
       <span className="sheet-foot">helptai · reconstructed · {Math.round((page?.confidence ?? 0) * 100)}% confidence</span>
     </div>

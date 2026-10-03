@@ -9,6 +9,8 @@ import { selectBestFrames, type Sample } from './frame-selection';
 
 export type SelectedFrame = {
   dataUrl: string;
+  width: number;
+  height: number;
   timestamp: number;
   // Clarity from 0 (blurry) to 1 (sharp), shown to the user and sent as a hint to Gemini.
   sharpness: number;
@@ -72,6 +74,8 @@ export async function selectVideoFrames(
       const previous = position ? samples[chosen[position - 1]] : null;
       frames.push({
         dataUrl: output.canvas.toDataURL('image/jpeg', OUTPUT_QUALITY),
+        width: output.canvas.width,
+        height: output.canvas.height,
         timestamp: sample.timestamp,
         sharpness: clarityFromSharpness(sample.sharpness),
         difference: previous ? alignedDifference(sample.signature, previous.signature) : 1,

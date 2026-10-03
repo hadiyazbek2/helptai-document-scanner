@@ -132,6 +132,51 @@ components:
       required:
         - documentName
         - frames
+    Box:
+      type: array
+      description: "Region of an image as [ymin, xmin, ymax, xmax], each 0-1000 (fractions of the image height/width times 1000)."
+      minItems: 4
+      maxItems: 4
+      items:
+        type: integer
+        minimum: 0
+        maximum: 1000
+    PageBlock:
+      type: object
+      description: One piece of a page in reading order, so the page's structure can be rebuilt.
+      properties:
+        type:
+          type: string
+          enum: [heading, paragraph, list, table, lines, caption, figure, header, footer]
+        level:
+          type: integer
+          minimum: 1
+          maximum: 3
+          description: Heading level (1 is the largest). Only for headings.
+        text:
+          type: string
+          description: Text of the block. For type "lines" each line of the page is on its own line.
+        items:
+          type: array
+          description: List items without their bullet or number. Only for lists.
+          items:
+            type: string
+        rows:
+          type: array
+          description: Table rows, each a list of cell texts. Only for tables.
+          items:
+            type: array
+            items:
+              type: string
+        box:
+          description: Where the block is in the best frame, or null if unknown.
+          oneOf:
+            - $ref: "#/components/schemas/Box"
+            - type: "null"
+      required:
+        - type
+        - text
+        - box
     ReconstructedPage:
       type: object
       properties:
@@ -161,6 +206,16 @@ components:
           type: integer
           minimum: 0
           description: Zero-based index of the frame that shows this page most clearly. Always one of sourceFrameIndices.
+        pageBox:
+          description: Where the paper page is inside the best frame, or null if unknown.
+          oneOf:
+            - $ref: "#/components/schemas/Box"
+            - type: "null"
+        blocks:
+          type: array
+          description: The page's content in reading order. The same text as `text`, with structure and position.
+          items:
+            $ref: "#/components/schemas/PageBlock"
         modelUsed:
           type: string
           description: Gemini model that produced this page.
@@ -173,6 +228,8 @@ components:
         - reviewReason
         - sourceFrameIndices
         - bestFrameIndex
+        - pageBox
+        - blocks
     ProcessDocumentResult:
       type: object
       properties:

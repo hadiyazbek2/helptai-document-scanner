@@ -54,6 +54,20 @@ export const processDocumentResponsePagesItemSourceFrameIndicesItemMin = 0;
 
 export const processDocumentResponsePagesItemBestFrameIndexMin = 0;
 
+export const processDocumentResponsePagesItemPageBoxOneItemMin = 0;
+export const processDocumentResponsePagesItemPageBoxOneItemMax = 1000;
+
+export const processDocumentResponsePagesItemPageBoxOneMin = 4;
+export const processDocumentResponsePagesItemPageBoxOneMax = 4;
+
+export const processDocumentResponsePagesItemBlocksItemLevelMax = 3;
+
+export const processDocumentResponsePagesItemBlocksItemBoxOneItemMin = 0;
+export const processDocumentResponsePagesItemBlocksItemBoxOneItemMax = 1000;
+
+export const processDocumentResponsePagesItemBlocksItemBoxOneMin = 4;
+export const processDocumentResponsePagesItemBlocksItemBoxOneMax = 4;
+
 
 
 export const ProcessDocumentResponse = zod.object({
@@ -67,6 +81,15 @@ export const ProcessDocumentResponse = zod.object({
   "reviewReason": zod.string().nullable(),
   "sourceFrameIndices": zod.array(zod.number().int().min(processDocumentResponsePagesItemSourceFrameIndicesItemMin)).min(1).describe('Zero-based indices (into the request frames) of every frame that shows this page.'),
   "bestFrameIndex": zod.number().int().min(processDocumentResponsePagesItemBestFrameIndexMin).describe('Zero-based index of the frame that shows this page most clearly. Always one of sourceFrameIndices.'),
+  "pageBox": zod.union([zod.array(zod.number().int().min(processDocumentResponsePagesItemPageBoxOneItemMin).max(processDocumentResponsePagesItemPageBoxOneItemMax)).min(processDocumentResponsePagesItemPageBoxOneMin).max(processDocumentResponsePagesItemPageBoxOneMax).describe('Region of an image as [ymin, xmin, ymax, xmax], each 0-1000 (fractions of the image height/width times 1000).'),zod.null()]).describe('Where the paper page is inside the best frame, or null if unknown.'),
+  "blocks": zod.array(zod.object({
+  "type": zod.enum(['heading', 'paragraph', 'list', 'table', 'lines', 'caption', 'figure', 'header', 'footer']),
+  "level": zod.number().int().min(1).max(processDocumentResponsePagesItemBlocksItemLevelMax).optional().describe('Heading level (1 is the largest). Only for headings.'),
+  "text": zod.string().describe('Text of the block. For type "lines" each line of the page is on its own line.'),
+  "items": zod.array(zod.string()).optional().describe('List items without their bullet or number. Only for lists.'),
+  "rows": zod.array(zod.array(zod.string())).optional().describe('Table rows, each a list of cell texts. Only for tables.'),
+  "box": zod.union([zod.array(zod.number().int().min(processDocumentResponsePagesItemBlocksItemBoxOneItemMin).max(processDocumentResponsePagesItemBlocksItemBoxOneItemMax)).min(processDocumentResponsePagesItemBlocksItemBoxOneMin).max(processDocumentResponsePagesItemBlocksItemBoxOneMax).describe('Region of an image as [ymin, xmin, ymax, xmax], each 0-1000 (fractions of the image height/width times 1000).'),zod.null()]).describe('Where the block is in the best frame, or null if unknown.')
+}).describe('One piece of a page in reading order, so the page\'s structure can be rebuilt.')).describe('The page\'s content in reading order. The same text as `text`, with structure and position.'),
   "modelUsed": zod.string().optional().describe('Gemini model that produced this page.')
 })),
   "selectedFrameCount": zod.number().int(),

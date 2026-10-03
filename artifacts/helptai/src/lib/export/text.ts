@@ -13,6 +13,10 @@ const WIN_ANSI_EXTRA: Record<number, number> = {
 const ASCII_FALLBACK: Record<string, string> = {
   '→': '->', '←': '<-', '↔': '<->', '⇒': '=>', '≤': '<=', '≥': '>=', '≠': '!=', '≈': '~',
   '−': '-', '∧': '^', '∨': 'v', '∞': 'inf', '✓': 'v',
+  '∃': 'exists', '∀': 'forall', '⊨': '|=', '⊢': '|-', '∈': 'in', '∉': 'not in', '⊂': 'subset', '⊆': 'subseteq',
+  '∪': 'union', '∩': 'intersect', '√': 'sqrt', '∑': 'sum', '∫': 'integral', 'α': 'alpha', 'β': 'beta', 'γ': 'gamma',
+  'δ': 'delta', 'Δ': 'Delta', 'θ': 'theta', 'λ': 'lambda', 'μ': 'mu', 'π': 'pi', 'σ': 'sigma', 'Σ': 'Sigma',
+  'φ': 'phi', 'ω': 'omega', 'Ω': 'Omega',
   '⁻': '-', '⁰': '0', '⁴': '4', '⁵': '5', '⁶': '6', '⁷': '7', '⁸': '8', '⁹': '9',
 };
 
@@ -88,4 +92,10 @@ export function wrapText(text: string, maxChars: number) {
 export function displayTitle(title: string, pageNumber: number) {
   const clean = title.trim();
   return !clean || /^untitled page$/i.test(clean) ? `Page ${pageNumber}` : clean;
+}
+
+// "Page 3 - Title" for headings and navigation; just "Page 3" when there is no real title.
+export function pageHeading(title: string, pageNumber: number) {
+  const clean = title.trim();
+  return !clean || /^untitled page$/i.test(clean) ? `Page ${pageNumber}` : `Page ${pageNumber} \u2014 ${clean}`;
 }

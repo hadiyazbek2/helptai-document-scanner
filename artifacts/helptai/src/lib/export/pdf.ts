@@ -1,7 +1,8 @@
 import type { Doc } from '../doc-model';
 import { concatBytes, utf8 } from './bytes';
+import { blockLines, boxToRect, fitText } from '../layout';
 import { fitInside, parseJpegDataUrl } from './jpeg';
-import { pdfString, wrapText } from './text';
+import { pdfString } from './text';
 
 const MARGIN = 28;
 
@@ -15,6 +16,54 @@ type PdfObject = Uint8Array;
 const obj = (dictionary: string): PdfObject => utf8(dictionary);
 const stream = (dictionary: string, data: Uint8Array): PdfObject =>
   concatBytes([utf8(`<< ${dictionary} /Length ${data.length} >>\nstream\n`), data, utf8('\nendstream')]);
+
+type Area = { x: number; y: number; width: number; height: number };
+
+// Invisible text for one page. Blocks with a known position get their text placed where they
+// are on the photo, so searching highlights the right spot; the rest flows over the whole image.
+function hiddenText(page: Doc['pages'][number], area: Area): string[] {
+  const ops: string[] = [];
+  const show = (lines: string[], box: Area, maxFontSize: number, spread = false) => {
+    const fitted = fitText(lines, box.width, box.height, maxFontSize, spread);
+    if (!fitted.lines.length) return;
+    const lead = fitted.fontSize * fitted.lineHeight;
+    ops.push(
+      'BT', '3 Tr', `/F1 ${fitted.fontSize.toFixed(2)} Tf`, `${lead.toFixed(2)} TL`,
+      `1 0 0 1 ${box.x.toFixed(2)} ${(box.y + box.height - fitted.fontSize).toFixed(2)} Tm`,
+      ...fitted.lines.map((line, index) => `${index ? 'T* ' : ''}${pdfString(line)} Tj`),
+      'ET',
+    );
+  };
+
+  const loose: string[] = [];
+  let lowest = 0; // how far down the photo the placed blocks reach (0..1)
+  for (const block of page.blocks) {
+    const lines = blockLines(block);
+    if (!lines.length) continue;
+    if (block.box) {
+      const rect = boxToRect(block.box);
+      lowest = Math.max(lowest, rect.y + rect.height);
+      // PDF's origin is the bottom-left corner; the box is measured from the top-left.
+      show(lines, {
+        x: area.x + rect.x * area.width,
+        y: area.y + area.height - (rect.y + rect.height) * area.height,
+        width: rect.width * area.width,
+        height: rect.height * area.height,
+      }, 14, block.type === 'lines' || block.type === 'list');
+    } else {
+      loose.push(...lines);
+    }
+  }
+  // Pages without structured blocks (older results) use their plain text.
+  if (!page.blocks.length && page.text.trim()) loose.push(...page.text.split(/\n+/));
+  // Blocks with no known position go in the space below the placed ones (or a thin strip at the
+  // bottom), so they do not cover the rest of the page.
+  if (loose.length) {
+    const room = Math.max(area.height * (1 - lowest), area.height * 0.08);
+    show(loose, { x: area.x, y: area.y, width: area.width, height: room }, 11);
+  }
+  return ops;
+}
 
 // One PDF page per document page: the page image fills the sheet, with an invisible text layer
 // on top so the file can be searched and text can be selected. (We do not know word positions,
@@ -45,22 +94,7 @@ export function buildPdf(doc: Doc, now = new Date()): Uint8Array {
     const colorSpace = image.components === 1 ? '/DeviceGray' : image.components === 4 ? '/DeviceCMYK' : '/DeviceRGB';
     const decode = image.components === 4 ? ' /Decode [1 0 1 0 1 0 1 0]' : '';
 
-    // Pick the largest hidden-text size that fits inside the image area.
-    let fontSize = 11;
-    let lines = wrapText(page.text, Math.floor(fit.width / (fontSize * 0.5)));
-    while (fontSize > 5 && lines.length * fontSize * 1.2 > fit.height) {
-      fontSize -= 1;
-      lines = wrapText(page.text, Math.floor(fit.width / (fontSize * 0.5)));
-    }
-    const lead = fontSize * 1.2;
-    const textOps = lines.length
-      ? [
-          'BT', '3 Tr', `/F1 ${fontSize} Tf`, `${lead.toFixed(2)} TL`,
-          `${x.toFixed(2)} ${(y + fit.height - fontSize).toFixed(2)} Td`,
-          ...lines.map((line, index) => `${index ? 'T* ' : ''}${pdfString(line)} Tj`),
-          'ET',
-        ]
-      : [];
+    const textOps = hiddenText(page, { x, y, width: fit.width, height: fit.height });
     const content = [
       'q', `${fit.width.toFixed(2)} 0 0 ${fit.height.toFixed(2)} ${x.toFixed(2)} ${y.toFixed(2)} cm`, '/Im0 Do', 'Q',
       ...textOps,

@@ -471,3 +471,27 @@
   .recent-section { max-width: 42rem; }
   .recording-overlay { place-items: center; }
 }
+
+/* ---------- rebuilt page (same layout as the photo) ---------- */
+.page-compare { display: grid; gap: 1rem; margin-top: 1rem; }
+.compare-pane { min-width: 0; }
+.compare-label { margin: 0 0 .45rem; color: hsl(var(--muted-foreground)); font-family: var(--app-font-mono); font-size: .55rem; letter-spacing: .1em; text-transform: uppercase; }
+.compare-pane .sheet-image { margin: 0; max-height: none; }
+.replica { container-type: inline-size; }
+.replica-page { position: relative; width: 100%; overflow: hidden; border: 1px solid rgba(46,58,70,.14); border-radius: .35rem; background: #fffdf8; box-shadow: 0 1px 0 rgba(46,58,70,.04); }
+.replica-block { position: absolute; overflow: hidden; color: #2E3A46; }
+.replica-block p, .replica-block ul, .replica-block table { margin: 0; }
+.replica-text { font-family: Inter, var(--app-font-body); }
+.replica-heading { font-family: Lora, var(--app-font-serif); font-weight: 600; }
+.replica-caption, .replica-header, .replica-footer { color: rgba(46,58,70,.7); }
+.replica-list { padding-left: 1.2em; list-style: none; font-family: Inter, var(--app-font-body); }
+.replica-list li { position: relative; }
+.replica-list li::before { position: absolute; left: -1.05em; content: '\2022'; }
+.replica-table { width: 100%; border-collapse: collapse; font-family: Inter, var(--app-font-body); }
+.replica-table td { padding: .1em .35em; border: 1px solid rgba(46,58,70,.28); vertical-align: top; }
+.replica-figure { width: 100%; height: 100%; border-radius: .15rem; background-repeat: no-repeat; }
+.replica-flow { display: grid; gap: .6rem; margin-top: .8rem; font-size: .95rem; }
+.replica-empty { margin: .8rem 0 0; color: hsl(var(--muted-foreground)); font-size: .8rem; }
+.sheet-plain { margin-top: .9rem; color: hsl(var(--muted-foreground)); font-size: .72rem; }
+.sheet-plain summary { cursor: pointer; font-family: var(--app-font-mono); letter-spacing: .08em; text-transform: uppercase; font-size: .55rem; }
+@media (min-width: 640px) { .page-compare { grid-template-columns: repeat(2, minmax(0, 1fr)); } }

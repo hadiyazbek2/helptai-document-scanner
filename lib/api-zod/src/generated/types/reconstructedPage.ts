@@ -5,6 +5,8 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { Box } from './box';
+import type { PageBlock } from './pageBlock';
 
 export interface ReconstructedPage {
   /** @minimum 1 */
@@ -30,6 +32,10 @@ export interface ReconstructedPage {
      * @minimum 0
      */
   bestFrameIndex: number;
+  /** Where the paper page is inside the best frame, or null if unknown. */
+  pageBox: Box | null;
+  /** The page's content in reading order. The same text as `text`, with structure and position. */
+  blocks: PageBlock[];
   /** Gemini model that produced this page. */
   modelUsed?: string;
 }

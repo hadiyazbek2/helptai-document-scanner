@@ -1,5 +1,6 @@
 import type { Doc, Page } from '../doc-model';
 import { fitInside, parseJpegDataUrl } from './jpeg';
+import { blockLines } from '../layout';
 import { displayTitle, paragraphsOf, xmlEscape } from './text';
 import { zip, type ZipEntry } from './zip';
 
@@ -28,17 +29,74 @@ function textShape(id: number, name: string, box: { x: number; y: number; width:
   return `<p:sp><p:nvSpPr><p:cNvPr id="${id}" name="${name}"/><p:cNvSpPr txBox="1"/><p:nvPr/></p:nvSpPr><p:spPr><a:xfrm><a:off x="${box.x}" y="${box.y}"/><a:ext cx="${box.width}" cy="${box.height}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom><a:noFill/></p:spPr><p:txBody><a:bodyPr wrap="square" lIns="0" tIns="0" rIns="0" bIns="0" anchor="${anchor}"><a:normAutofit/></a:bodyPr><a:lstStyle/>${paragraphs.join('')}</p:txBody></p:sp>`;
 }
 
-const para = (runs: string, afterPts = 0, align = 'l') =>
-  `<a:p><a:pPr algn="${align}">${afterPts ? `<a:spcAft><a:spcPts val="${afterPts}"/></a:spcAft>` : ''}</a:pPr>${runs}</a:p>`;
+const para = (runs: string, afterPts = 0, align = 'l', bullet = false) =>
+  bullet
+    ? `<a:p><a:pPr marL="285750" indent="-285750" algn="${align}">${afterPts ? `<a:spcAft><a:spcPts val="${afterPts}"/></a:spcAft>` : ''}<a:buFont typeface="Arial"/><a:buChar char="&#8226;"/></a:pPr>${runs}</a:p>`
+    : `<a:p><a:pPr algn="${align}">${afterPts ? `<a:spcAft><a:spcPts val="${afterPts}"/></a:spcAft>` : ''}<a:buNone/></a:pPr>${runs}</a:p>`;
 
-// Longer pages get smaller type so the text stays inside the slide.
-function bodySize(characters: number) {
-  if (characters <= 500) return 1600;
-  if (characters <= 900) return 1400;
-  if (characters <= 1400) return 1200;
-  if (characters <= 2000) return 1050;
-  if (characters <= 2800) return 900;
+// What one slide paragraph looks like; sizes are applied later so the whole text can be fitted.
+type SlideParagraph = {
+  text: string;
+  scale: number; // relative to the body size
+  after: number; // space after, in points
+  bullet?: boolean;
+  bold?: boolean;
+  italic?: boolean;
+  color?: string;
+  font?: string;
+};
+
+// A page's blocks as slide paragraphs: headings bold and larger, lists bulleted, line breaks kept.
+function blockParagraphs(page: Page): SlideParagraph[] {
+  const out: SlideParagraph[] = [];
+  const title = page.title.trim().toLowerCase();
+  page.blocks.forEach((block, index) => {
+    if (block.type === 'figure') return;
+    if (block.type === 'heading') {
+      if (index === 0 && block.text.trim().toLowerCase() === title) return;
+      out.push({ text: block.text, scale: block.level === 1 ? 1.3 : 1.15, after: 4, bold: true, font: HEADING_FONT });
+    } else if (block.type === 'list') {
+      (block.items ?? []).forEach((item) => out.push({ text: item, scale: 1, after: 3, bullet: true }));
+    } else if (block.type === 'lines' || block.type === 'table') {
+      blockLines(block).forEach((line, i, all) => out.push({ text: line, scale: 1, after: i === all.length - 1 ? 6 : 0 }));
+    } else if (block.type === 'caption' || block.type === 'header' || block.type === 'footer') {
+      out.push({ text: block.text, scale: 0.85, after: 4, italic: block.type === 'caption', color: '5B6671' });
+    } else {
+      blockLines(block).forEach((line) => out.push({ text: line, scale: 1, after: 6 }));
+    }
+  });
+  return out;
+}
+
+const TEXT_WIDTH_PT = TEXT_BOX.width / 12700;
+const TEXT_HEIGHT_PT = TEXT_BOX.height / 12700;
+
+// Estimated height, in points, of the paragraphs at a given body size (hundredths of a point).
+function estimateHeight(paragraphs: SlideParagraph[], size: number) {
+  const pt = size / 100;
+  return paragraphs.reduce((total, p) => {
+    const fontPt = pt * p.scale;
+    const width = TEXT_WIDTH_PT - (p.bullet ? 22 : 0);
+    const lines = Math.max(1, Math.ceil((p.text.length * fontPt * 0.5) / width));
+    return total + lines * fontPt * 1.2 + p.after;
+  }, 0);
+}
+
+// The largest body size (16pt down to 8pt) at which the text fits the box.
+function fitBodySize(paragraphs: SlideParagraph[]) {
+  for (let size = 1600; size > 800; size -= 100) {
+    if (estimateHeight(paragraphs, size) <= TEXT_HEIGHT_PT) return size;
+  }
   return 800;
+}
+
+function renderParagraph(p: SlideParagraph, size: number) {
+  return para(
+    run(p.text, Math.round(size * p.scale), { bold: p.bold, italic: p.italic, color: p.color, font: p.font }),
+    p.after * 100,
+    'l',
+    p.bullet,
+  );
 }
 
 function slideXml(page: Page, index: number, total: number, image: { width: number; height: number }) {
@@ -48,19 +106,20 @@ function slideXml(page: Page, index: number, total: number, image: { width: numb
   const x = IMAGE_BOX.x + Math.round((IMAGE_BOX.width - cx) / 2);
   const y = IMAGE_BOX.y + Math.round((IMAGE_BOX.height - cy) / 2);
 
-  const lines = paragraphsOf(page.text);
-  const size = bodySize(page.text.length);
-  const bodyParagraphs = lines.length
-    ? lines.map((line) => para(run(line, size), 600))
+  const paragraphs: SlideParagraph[] = page.blocks.length
+    ? blockParagraphs(page)
+    : paragraphsOf(page.text).map((text) => ({ text, scale: 1, after: 6 }));
+  if (page.status === 'needs-review') {
+    paragraphs.unshift({ text: `Check this page \u2014 ${page.reviewReason ?? 'the text was hard to read from the scan.'}`, scale: 0.7, after: 6, italic: true, color: AMBER_TEXT });
+  }
+  const size = fitBodySize(paragraphs);
+  const bodyParagraphs = paragraphs.length
+    ? paragraphs.map((p) => renderParagraph(p, size))
     : [para(run('No readable text was found for this page.', 1400, { italic: true }))];
-
-  const flag = page.status === 'needs-review'
-    ? [para(run(`Check this page — ${page.reviewReason ?? 'the text was hard to read from the scan.'}`, 1100, { italic: true, color: AMBER_TEXT }), 600)]
-    : [];
 
   const title = textShape(2, 'Title', { x: MARGIN, y: 330000, width: SLIDE.width - MARGIN * 2, height: 560000 },
     [para(run(displayTitle(page.title, page.pageNumber), 2400, { bold: true, font: HEADING_FONT }))], 'ctr');
-  const text = textShape(3, 'Text', TEXT_BOX, [...flag, ...bodyParagraphs]);
+  const text = textShape(3, 'Text', TEXT_BOX, bodyParagraphs);
   const picture = `<p:pic><p:nvPicPr><p:cNvPr id="4" name="Page ${page.pageNumber} image" descr="${xmlEscape(`Source image for page ${page.pageNumber}`)}"/><p:cNvPicPr><a:picLocks noChangeAspect="1"/></p:cNvPicPr><p:nvPr/></p:nvPicPr><p:blipFill><a:blip r:embed="rId2"/><a:stretch><a:fillRect/></a:stretch></p:blipFill><p:spPr><a:xfrm><a:off x="${x}" y="${y}"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr></p:pic>`;
   const footer = textShape(5, 'Footer', { x: MARGIN, y: 6450000, width: SLIDE.width - MARGIN * 2, height: 250000 },
     [para(run(`helptai · page ${index + 1} of ${total}`, 1000, { color: '6B7782' }), 0, 'r')], 'ctr');
