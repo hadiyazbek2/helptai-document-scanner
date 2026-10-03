@@ -1,0 +1,91 @@
+import type { Doc, Page } from '../doc-model';
+import { fitInside, parseJpegDataUrl } from './jpeg';
+import { displayTitle, paragraphsOf, xmlEscape } from './text';
+import { zip } from './zip';
+
+const EMU_PER_INCH = 914400;
+const NS_W = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
+const NS_R = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships';
+const NS_A = 'http://schemas.openxmlformats.org/drawingml/2006/main';
+const NS_PIC = 'http://schemas.openxmlformats.org/drawingml/2006/picture';
+const NS_WP = 'http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing';
+const REL = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships';
+const XML = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n';
+
+// Brand fonts (Lora / Inter) are web fonts that most Word installs lack, so documents use
+// the closest safe equivalents: Georgia for headings, Calibri for body text.
+const NAVY = '2E3A46';
+const AMBER_TEXT = '9A6A34';
+
+function paragraph(text: string, options: { style?: string; italic?: boolean; color?: string; pageBreakBefore?: boolean; keepNext?: boolean } = {}) {
+  const props = [
+    options.style ? `<w:pStyle w:val="${options.style}"/>` : '',
+    options.keepNext ? '<w:keepNext/>' : '',
+    options.pageBreakBefore ? '<w:pageBreakBefore/>' : '',
+  ].join('');
+  const runProps = [options.italic ? '<w:i/>' : '', options.color ? `<w:color w:val="${options.color}"/>` : ''].join('');
+  return `<w:p>${props ? `<w:pPr>${props}</w:pPr>` : ''}<w:r>${runProps ? `<w:rPr>${runProps}</w:rPr>` : ''}<w:t xml:space="preserve">${xmlEscape(text)}</w:t></w:r></w:p>`;
+}
+
+function imageParagraph(page: Page, relId: string, drawingId: number, width: number, height: number) {
+  const cx = Math.round(width * EMU_PER_INCH);
+  const cy = Math.round(height * EMU_PER_INCH);
+  const description = xmlEscape(`Source image for page ${page.pageNumber}`);
+  return `<w:p><w:pPr><w:spacing w:before="120" w:after="0"/></w:pPr><w:r><w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0"><wp:extent cx="${cx}" cy="${cy}"/><wp:docPr id="${drawingId}" name="Page ${page.pageNumber} image" descr="${description}"/><wp:cNvGraphicFramePr><a:graphicFrameLocks noChangeAspect="1"/></wp:cNvGraphicFramePr><a:graphic><a:graphicData uri="${NS_PIC}"><pic:pic><pic:nvPicPr><pic:cNvPr id="${drawingId}" name="page-${page.pageNumber}.jpg"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip r:embed="${relId}"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r></w:p>`;
+}
+
+const STYLES = `${XML}<w:styles xmlns:w="${NS_W}">
+<w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="Calibri" w:hAnsi="Calibri" w:cs="Calibri" w:eastAsia="Calibri"/><w:sz w:val="23"/><w:szCs w:val="23"/><w:lang w:val="en-US"/></w:rPr></w:rPrDefault><w:pPrDefault><w:pPr><w:spacing w:after="140" w:line="300" w:lineRule="auto"/></w:pPr></w:pPrDefault></w:docDefaults>
+<w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/><w:qFormat/><w:rPr><w:color w:val="${NAVY}"/></w:rPr></w:style>
+<w:style w:type="paragraph" w:styleId="Title"><w:name w:val="Title"/><w:basedOn w:val="Normal"/><w:next w:val="Normal"/><w:qFormat/><w:pPr><w:spacing w:before="0" w:after="60"/></w:pPr><w:rPr><w:rFonts w:ascii="Georgia" w:hAnsi="Georgia" w:cs="Georgia"/><w:b/><w:color w:val="${NAVY}"/><w:sz w:val="56"/><w:szCs w:val="56"/></w:rPr></w:style>
+<w:style w:type="paragraph" w:styleId="Subtitle"><w:name w:val="Subtitle"/><w:basedOn w:val="Normal"/><w:next w:val="Normal"/><w:qFormat/><w:pPr><w:spacing w:after="240"/></w:pPr><w:rPr><w:color w:val="5B7FA6"/><w:sz w:val="22"/><w:szCs w:val="22"/></w:rPr></w:style>
+<w:style w:type="paragraph" w:styleId="Heading1"><w:name w:val="heading 1"/><w:basedOn w:val="Normal"/><w:next w:val="Normal"/><w:qFormat/><w:pPr><w:keepNext/><w:spacing w:before="0" w:after="160"/><w:outlineLvl w:val="0"/></w:pPr><w:rPr><w:rFonts w:ascii="Georgia" w:hAnsi="Georgia" w:cs="Georgia"/><w:b/><w:color w:val="${NAVY}"/><w:sz w:val="36"/><w:szCs w:val="36"/></w:rPr></w:style>
+</w:styles>`;
+
+export function buildDocx(doc: Doc, now = new Date()): Uint8Array {
+  if (!doc.pages.length) throw new Error('There are no pages to export.');
+  const pages = doc.pages;
+  const title = doc.name || 'Untitled document';
+
+  const rels: string[] = [`<Relationship Id="rIdStyles" Type="${REL}/styles" Target="styles.xml"/>`];
+  const media: Array<{ name: string; content: Uint8Array }> = [];
+  const body: string[] = [
+    paragraph(title, { style: 'Title' }),
+    paragraph(`${pages.length} ${pages.length === 1 ? 'page' : 'pages'} · made with helptai`, { style: 'Subtitle' }),
+  ];
+
+  pages.forEach((page, index) => {
+    const image = parseJpegDataUrl(page.image);
+    const relId = `rIdImg${index + 1}`;
+    media.push({ name: `word/media/page-${index + 1}.jpg`, content: image.bytes });
+    rels.push(`<Relationship Id="${relId}" Type="${REL}/image" Target="media/page-${index + 1}.jpg"/>`);
+
+    body.push(paragraph(displayTitle(page.title, page.pageNumber), { style: 'Heading1', pageBreakBefore: index > 0 }));
+    if (page.status === 'needs-review') {
+      body.push(paragraph(`Check this page — ${page.reviewReason ?? 'the text was hard to read from the scan.'}`, { italic: true, color: AMBER_TEXT }));
+    }
+    const text = paragraphsOf(page.text);
+    if (text.length) text.forEach((line) => body.push(paragraph(line)));
+    else body.push(paragraph('No readable text was found for this page.', { italic: true }));
+
+    const size = fitInside(image.width, image.height, 3.2, 4.2);
+    body.push(imageParagraph(page, relId, index + 1, size.width, size.height));
+  });
+
+  const documentXml = `${XML}<w:document xmlns:w="${NS_W}" xmlns:r="${NS_R}" xmlns:wp="${NS_WP}" xmlns:a="${NS_A}" xmlns:pic="${NS_PIC}"><w:body>${body.join('')}<w:sectPr><w:pgSz w:w="12240" w:h="15840"/><w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440" w:header="720" w:footer="720" w:gutter="0"/></w:sectPr></w:body></w:document>`;
+
+  const contentTypes = `${XML}<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Default Extension="jpg" ContentType="image/jpeg"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/><Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/></Types>`;
+  const rootRels = `${XML}<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="${REL}/officeDocument" Target="word/document.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/></Relationships>`;
+  const documentRels = `${XML}<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${rels.join('')}</Relationships>`;
+  const core = `${XML}<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><dc:title>${xmlEscape(title)}</dc:title><dc:creator>helptai</dc:creator><dcterms:created xsi:type="dcterms:W3CDTF">${now.toISOString().replace(/\.\d+Z$/, 'Z')}</dcterms:created></cp:coreProperties>`;
+
+  return zip([
+    { name: '[Content_Types].xml', content: contentTypes },
+    { name: '_rels/.rels', content: rootRels },
+    { name: 'docProps/core.xml', content: core },
+    { name: 'word/document.xml', content: documentXml },
+    { name: 'word/_rels/document.xml.rels', content: documentRels },
+    { name: 'word/styles.xml', content: STYLES },
+    ...media,
+  ]);
+}

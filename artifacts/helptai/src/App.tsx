@@ -18,7 +18,7 @@ import {
   Video,
   X,
 } from 'lucide-react';
-import { downloadDocx, downloadPdf, downloadPptx } from '@/lib/exports';
+import { downloadDocx, downloadPdf, downloadPptx } from '@/lib/export';
 import type { ProcessDocumentResult } from '@helptai/api-client-react';
 import { buildDoc, type Doc, type Page } from '@/lib/doc-model';
 import { selectVideoFrames, type SelectedFrame } from '@/lib/video-processing';
@@ -679,10 +679,15 @@ function App() {
   };
 
   const handleExport = (format: string) => {
-    if (format === 'PDF') downloadPdf(documentName);
-    if (format === 'Word') downloadDocx(documentName);
-    if (format === 'PowerPoint') downloadPptx(documentName);
-    setToast({ message: `${format} export downloaded — your document is safely prepared.`, tone: 'sage' });
+    if (!analysis) return;
+    try {
+      if (format === 'PDF') downloadPdf(analysis);
+      if (format === 'Word') downloadDocx(analysis);
+      if (format === 'PowerPoint') downloadPptx(analysis);
+      setToast({ message: `${format} file saved — all ${analysis.pages.length} pages are in it.`, tone: 'sage' });
+    } catch {
+      setToast({ message: `We couldn't prepare the ${format} file. Please try again.`, tone: 'amber' });
+    }
   };
 
   const finishPatch = () => {
