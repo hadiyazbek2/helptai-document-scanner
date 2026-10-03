@@ -9,8 +9,8 @@ import pRetry, { AbortError } from "p-retry";
  *
  * USAGE:
  * ```typescript
- * import { batchProcess } from "@workspace/integrations-gemini-ai/batch";
- * import { ai } from "@workspace/integrations-gemini-ai";
+ * import { batchProcess } from "@helptai/integrations-gemini-ai/batch";
+ * import { ai } from "@helptai/integrations-gemini-ai";
  *
  * const results = await batchProcess(
  *   artworks,

@@ -1,19 +1,31 @@
 {
-  "name": "workspace",
-  "version": "0.0.0",
-  "license": "MIT",
-  "scripts": {
-    "preinstall": "sh -c 'rm -f package-lock.json yarn.lock; case \"$npm_config_user_agent\" in pnpm/*) ;; *) echo \"Use pnpm instead\" >&2; exit 1 ;; esac'",
-    "build": "pnpm run typecheck && pnpm -r --if-present run build",
-    "typecheck:libs": "tsc --build",
-    "typecheck": "pnpm run typecheck:libs && pnpm -r --filter \"./artifacts/**\" --filter \"./scripts\" --if-present run typecheck"
-  },
+  "name": "helptai",
+  "version": "0.1.0",
   "private": true,
-  "dependencies": {
-    "@replit/connectors-sdk": "^0.4.3"
+  "license": "MIT",
+  "engines": {
+    "node": ">=22.9"
+  },
+  "workspaces": [
+    "artifacts/helptai",
+    "artifacts/api-server",
+    "lib/api-zod",
+    "lib/api-client-react",
+    "lib/api-spec",
+    "lib/integrations-gemini-ai"
+  ],
+  "scripts": {
+    "dev": "concurrently -n api,web -c blue,green \"npm run dev -w @helptai/api-server\" \"npm run dev -w @helptai/helptai\"",
+    "build": "npm run typecheck && npm run build --workspaces --if-present",
+    "typecheck": "npm run typecheck:libs && npm run typecheck --workspaces --if-present",
+    "typecheck:libs": "tsc --build"
   },
   "devDependencies": {
+    "concurrently": "^9.2.0",
     "prettier": "^3.9.6",
     "typescript": "~5.9.3"
+  },
+  "overrides": {
+    "js-yaml": "4.3.2"
   }
 }

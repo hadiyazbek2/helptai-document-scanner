@@ -1,1 +1,0 @@
-- [Gemini model availability](gemini-model-availability.md) — provider-key users may need the current model name; model 404s can be retirement/eligibility errors, not bad credentials.

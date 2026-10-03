@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
-import { ProcessDocumentBody } from "@workspace/api-zod";
-import { ai } from "@workspace/integrations-gemini-ai";
+import { ProcessDocumentBody } from "@helptai/api-zod";
+import { ai } from "@helptai/integrations-gemini-ai";
 
 const router: IRouter = Router();
 
@@ -31,7 +31,7 @@ router.post("/process-document", async (req, res) => {
   const prompt = buildPrompt(documentName, frames);
   try {
     const request = {
-      model: "gemini-3.6-flash",
+      model: process.env.GEMINI_MODEL ?? "gemini-3.6-flash",
       contents: [
         {
           role: "user" as const,
