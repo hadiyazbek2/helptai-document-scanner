@@ -20,6 +20,7 @@ import type {
 } from '@tanstack/react-query';
 
 import type {
+  ErrorResponse,
   HealthStatus,
   ProcessDocumentInput,
   ProcessDocumentResult
@@ -173,7 +174,7 @@ return customFetch<ProcessDocumentResult>(getProcessDocumentUrl(),
 
 export const getProcessDocumentMutationKey = () => ['processDocument'] as const;
 
-export const getProcessDocumentMutationOptions = <TError = ErrorType<void>,
+export const getProcessDocumentMutationOptions = <TError = ErrorType<ErrorResponse>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof processDocument>>, TError,ProcessDocumentMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
 ): UseMutationOptions<Awaited<ReturnType<typeof processDocument>>, TError,ProcessDocumentMutationVariables, TContext> => {
 
@@ -202,13 +203,13 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
     export type ProcessDocumentMutationResult = NonNullable<Awaited<ReturnType<typeof processDocument>>>
     export type ProcessDocumentMutationBody = BodyType<ProcessDocumentInput>
-    export type ProcessDocumentMutationError = ErrorType<void>
+    export type ProcessDocumentMutationError = ErrorType<ErrorResponse>
     export type ProcessDocumentMutationVariables = {data: BodyType<ProcessDocumentInput>}
 
     /**
  * @summary Analyze selected document frames
  */
-export const useProcessDocument = <TError = ErrorType<void>,
+export const useProcessDocument = <TError = ErrorType<ErrorResponse>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof processDocument>>, TError,ProcessDocumentMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
  ): UseMutationResult<
         Awaited<ReturnType<typeof processDocument>>,

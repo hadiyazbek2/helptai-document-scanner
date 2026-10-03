@@ -25,7 +25,7 @@ npm run dev               # web on :5173, API on :8080 (web proxies /api)
 | Variable | Purpose |
 |---|---|
 | `GEMINI_API_KEY` | Required. Google AI Studio key. |
-| `GEMINI_MODEL` | Optional. Model for reconstruction (default `gemini-3.6-flash`). |
+| `GEMINI_MODELS` | Optional. Comma-separated models tried in order; a busy or out-of-quota model falls through to the next (default `gemini-3.6-flash,gemini-3.8-flash,gemini-3.5-flash`). |
 | `PORT` | Optional. API port (default 8080). |
 | `API_PORT` | Optional. Port the web dev server proxies `/api` to (default 8080). |
 

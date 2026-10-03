@@ -19,4 +19,17 @@ export interface ReconstructedPage {
   needsReview: boolean;
   /** @nullable */
   reviewReason: string | null;
+  /**
+     * Zero-based indices (into the request frames) of every frame that shows this page.
+     * @minItems 1
+     * @items.minimum 0
+     */
+  sourceFrameIndices: number[];
+  /**
+     * Zero-based index of the frame that shows this page most clearly. Always one of sourceFrameIndices.
+     * @minimum 0
+     */
+  bestFrameIndex: number;
+  /** Gemini model that produced this page. */
+  modelUsed?: string;
 }

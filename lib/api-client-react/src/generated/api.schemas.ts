@@ -9,6 +9,24 @@ export interface HealthStatus {
   status: string;
 }
 
+export type ErrorResponseCode = typeof ErrorResponseCode[keyof typeof ErrorResponseCode];
+
+
+export const ErrorResponseCode = {
+  bad_request: 'bad_request',
+  quota: 'quota',
+  busy: 'busy',
+  invalid_output: 'invalid_output',
+  blocked: 'blocked',
+  unavailable: 'unavailable',
+} as const;
+
+export interface ErrorResponse {
+  /** Calm, plain-language message that can be shown to the user. */
+  error: string;
+  code: ErrorResponseCode;
+}
+
 export interface ProcessFrame {
   /** @minLength 32 */
   dataUrl: string;
@@ -28,7 +46,7 @@ export interface ProcessDocumentInput {
   documentName: string;
   /**
      * @minItems 1
-     * @maxItems 12
+     * @maxItems 30
      */
   frames: ProcessFrame[];
 }
@@ -46,6 +64,19 @@ export interface ReconstructedPage {
   needsReview: boolean;
   /** @nullable */
   reviewReason: string | null;
+  /**
+     * Zero-based indices (into the request frames) of every frame that shows this page.
+     * @minItems 1
+     * @items.minimum 0
+     */
+  sourceFrameIndices: number[];
+  /**
+     * Zero-based index of the frame that shows this page most clearly. Always one of sourceFrameIndices.
+     * @minimum 0
+     */
+  bestFrameIndex: number;
+  /** Gemini model that produced this page. */
+  modelUsed?: string;
 }
 
 export interface ProcessDocumentResult {

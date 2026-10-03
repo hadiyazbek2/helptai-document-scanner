@@ -15,7 +15,7 @@ export interface ProcessDocumentInput {
   documentName: string;
   /**
      * @minItems 1
-     * @maxItems 12
+     * @maxItems 30
      */
   frames: ProcessFrame[];
 }

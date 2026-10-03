@@ -47,8 +47,34 @@ paths:
                 $ref: "#/components/schemas/ProcessDocumentResult"
         "400":
           description: Invalid frames
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: AI usage limit reached
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: AI declined to transcribe these frames
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "502":
           description: AI analysis unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: AI temporarily busy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 components:
   schemas:
     HealthStatus:
@@ -58,6 +84,18 @@ components:
           type: string
       required:
         - status
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+          description: Calm, plain-language message that can be shown to the user.
+        code:
+          type: string
+          enum: [bad_request, quota, busy, invalid_output, blocked, unavailable]
+      required:
+        - error
+        - code
     ProcessFrame:
       type: object
       properties:
@@ -88,7 +126,7 @@ components:
         frames:
           type: array
           minItems: 1
-          maxItems: 12
+          maxItems: 30
           items:
             $ref: "#/components/schemas/ProcessFrame"
       required:
@@ -112,6 +150,20 @@ components:
           type: boolean
         reviewReason:
           type: ["string", "null"]
+        sourceFrameIndices:
+          type: array
+          description: Zero-based indices (into the request frames) of every frame that shows this page.
+          minItems: 1
+          items:
+            type: integer
+            minimum: 0
+        bestFrameIndex:
+          type: integer
+          minimum: 0
+          description: Zero-based index of the frame that shows this page most clearly. Always one of sourceFrameIndices.
+        modelUsed:
+          type: string
+          description: Gemini model that produced this page.
       required:
         - pageNumber
         - title
@@ -119,6 +171,8 @@ components:
         - confidence
         - needsReview
         - reviewReason
+        - sourceFrameIndices
+        - bestFrameIndex
     ProcessDocumentResult:
       type: object
       properties:

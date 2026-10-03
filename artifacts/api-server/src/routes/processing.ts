@@ -1,120 +1,127 @@
-import { Router, type IRouter } from "express";
-import { ProcessDocumentBody } from "@helptai/api-zod";
+import { Router, type IRouter, type Response } from "express";
+import { ProcessDocumentBody, type ErrorResponseCode } from "@helptai/api-zod";
 import { ai } from "@helptai/integrations-gemini-ai";
+import { buildPrompt, parseModelResult, RESPONSE_SCHEMA } from "../lib/analysis";
+import {
+  AllModelsFailedError,
+  BlockedOutputError,
+  InvalidOutputError,
+  runWithModelFallback,
+} from "../lib/gemini-call";
+import { getModelChain } from "../lib/gemini-config";
 
 const router: IRouter = Router();
 
 const MAX_INLINE_FRAME_BYTES = 1_150_000;
 const SAFE_REQUESTS_PER_MINUTE = 12;
 const geminiRequestTimes: number[] = [];
+const BLOCKED_FINISH_REASONS = new Set(["RECITATION", "SAFETY", "PROHIBITED_CONTENT", "BLOCKLIST", "SPII"]);
+
+const MESSAGES: Record<ErrorResponseCode, string> = {
+  bad_request: "The selected frames could not be read.",
+  quota: "Gemini's usage limit has been reached for now. Please try again a little later.",
+  busy: "Gemini is busy right now. Please try this capture again in a moment.",
+  invalid_output: "The pages could not be put together this time. Please try again.",
+  blocked:
+    "Gemini declined to transcribe these frames, which can happen with published text. Try again with fewer pages, or a different capture.",
+  unavailable:
+    "The document could not be analyzed right now. Your original capture is still on this device.",
+};
+const STATUS: Record<ErrorResponseCode, number> = {
+  bad_request: 400,
+  quota: 429,
+  busy: 503,
+  invalid_output: 502,
+  blocked: 422,
+  unavailable: 502,
+};
+
+function sendError(res: Response, code: ErrorResponseCode, message = MESSAGES[code]) {
+  res.status(STATUS[code]).json({ error: message, code });
+}
 
 router.post("/process-document", async (req, res) => {
   const parsed = ProcessDocumentBody.safeParse(req.body);
   if (!parsed.success) {
-    res.status(400).json({ error: "The selected frames could not be read." });
+    sendError(res, "bad_request");
     return;
   }
 
   const { documentName, frames } = parsed.data;
   const inlineFrames = frames.map((frame) => parseDataUrl(frame.dataUrl));
-  if (
-    inlineFrames.some(
-      (frame) => !frame || frame.data.length > MAX_INLINE_FRAME_BYTES,
-    )
-  ) {
-    res.status(400).json({
-      error: "One of the selected frames is too large to analyze.",
-    });
+  if (inlineFrames.some((frame) => !frame || frame.data.length > MAX_INLINE_FRAME_BYTES)) {
+    sendError(res, "bad_request", "One of the selected frames is too large to analyze.");
+    return;
+  }
+  if (!reserveGeminiRequest()) {
+    sendError(res, "quota");
     return;
   }
 
-  const prompt = buildPrompt(documentName, frames);
-  try {
-    const request = {
-      model: process.env.GEMINI_MODEL ?? "gemini-3.6-flash",
-      contents: [
-        {
-          role: "user" as const,
-          parts: [
-            { text: prompt },
-            ...inlineFrames.flatMap((frame) =>
-              frame
-                ? [
-                    {
-                      inlineData: {
-                        mimeType: frame.mimeType,
-                        data: frame.data,
-                      },
-                    },
-                  ]
-                : [],
-            ),
-          ],
-        },
+  const contents = [
+    {
+      role: "user" as const,
+      parts: [
+        { text: buildPrompt(documentName, frames) },
+        ...inlineFrames.flatMap((frame) =>
+          frame ? [{ inlineData: { mimeType: frame.mimeType, data: frame.data } }] : [],
+        ),
       ],
-      config: {
-        maxOutputTokens: 8192,
-        responseMimeType: "application/json",
+    },
+  ];
+
+  try {
+    const { result: pages, model } = await runWithModelFallback(
+      getModelChain(),
+      async (model) => {
+        const response = await ai.models.generateContent({
+          model,
+          contents,
+          config: {
+            maxOutputTokens: 16384,
+            responseMimeType: "application/json",
+            responseSchema: RESPONSE_SCHEMA,
+          },
+        });
+        const finishReason = response.candidates?.[0]?.finishReason;
+        if (finishReason === "MAX_TOKENS") throw new InvalidOutputError("Model output was cut off");
+        if (finishReason && BLOCKED_FINISH_REASONS.has(String(finishReason))) {
+          throw new BlockedOutputError(String(finishReason));
+        }
+        return parseModelResult(response.text ?? "", frames);
       },
-    };
-    const response = await generateWithRetry(request);
+      {
+        onEvent: ({ model, kind, attempt, error }) =>
+          req.log.warn(
+            { model, kind, attempt, reason: error instanceof Error ? error.message.slice(0, 200) : String(error) },
+            "Gemini attempt failed",
+          ),
+      },
+    );
 
-    const result = parseModelResult(response.text ?? "");
-    if (!result) {
-      req.log.error("Gemini returned an invalid document analysis");
-      res.status(502).json({ error: "The document could not be reconstructed." });
-      return;
-    }
-
+    const used = new Set(pages.flatMap((page) => page.sourceFrameIndices));
     res.json({
       documentName,
-      pages: result.pages,
+      pages: pages.map((page) => ({ ...page, modelUsed: model })),
       selectedFrameCount: frames.length,
-      discardedFrameCount: Math.max(0, frames.length - result.pages.length),
+      discardedFrameCount: frames.length - used.size,
       processingNote:
         "Frames were filtered locally before Gemini checked their order, text, and confidence.",
     });
   } catch (error) {
     req.log.error({ err: error }, "Document analysis failed");
-    const quotaLimited = error instanceof GeminiQuotaError || getErrorStatus(error) === 429;
-    const temporarilyUnavailable = isTemporaryGeminiError(error);
-    res.status(quotaLimited ? 429 : temporarilyUnavailable ? 503 : 502).json({
-      error: quotaLimited
-        ? "Gemini's request limit has been reached for the moment. Please wait about a minute and try again."
-        : temporarilyUnavailable
-        ? "Gemini is temporarily busy. Please try this capture again in a moment."
-        : "The document could not be analyzed right now. Your original capture is still on this device.",
-    });
+    sendError(res, errorCode(error));
   }
 });
 
-async function generateWithRetry(request: Parameters<typeof ai.models.generateContent>[0]) {
-  for (let attempt = 0; attempt < 2; attempt += 1) {
-    try {
-      reserveGeminiRequest();
-      return await ai.models.generateContent(request);
-    } catch (error) {
-      if (!isTemporaryGeminiError(error) || attempt === 1) throw error;
-      await new Promise((resolve) => setTimeout(resolve, 1200));
-    }
-  }
-  throw new Error("Gemini did not return an analysis.");
-}
-
-function isTemporaryGeminiError(error: unknown) {
-  if (!error || typeof error !== "object") return false;
-  const value = error as { status?: number; message?: string };
-  return (
-    value.status === 429 ||
-    value.status === 503 ||
-    /high demand|temporarily|unavailable|resource exhausted/i.test(value.message ?? "")
-  );
-}
-
-function getErrorStatus(error: unknown) {
-  return error && typeof error === "object" && "status" in error
-    ? Number((error as { status?: unknown }).status)
-    : undefined;
+function errorCode(error: unknown): ErrorResponseCode {
+  if (!(error instanceof AllModelsFailedError)) return "unavailable";
+  const kinds = error.failures.map((failure) => failure.kind);
+  if (kinds.every((kind) => kind === "daily_quota" || kind === "rate_limit")) return "quota";
+  if (kinds.includes("transient")) return "busy";
+  if (kinds.includes("blocked")) return "blocked";
+  if (kinds.includes("invalid_output")) return "invalid_output";
+  return "unavailable";
 }
 
 function reserveGeminiRequest() {
@@ -122,19 +129,9 @@ function reserveGeminiRequest() {
   while (geminiRequestTimes[0] && now - geminiRequestTimes[0] >= 60_000) {
     geminiRequestTimes.shift();
   }
-  if (geminiRequestTimes.length >= SAFE_REQUESTS_PER_MINUTE) {
-    throw new GeminiQuotaError();
-  }
+  if (geminiRequestTimes.length >= SAFE_REQUESTS_PER_MINUTE) return false;
   geminiRequestTimes.push(now);
-}
-
-class GeminiQuotaError extends Error {
-  status = 429;
-
-  constructor() {
-    super("Local Gemini request safety limit reached");
-    this.name = "GeminiQuotaError";
-  }
+  return true;
 }
 
 function parseDataUrl(value: string) {
@@ -142,87 +139,6 @@ function parseDataUrl(value: string) {
   return match
     ? { mimeType: match[1] === "image/jpg" ? "image/jpeg" : match[1], data: match[2] }
     : null;
-}
-
-function buildPrompt(
-  documentName: string,
-  frames: Array<{
-    timestamp: number;
-    sharpness: number;
-    difference: number;
-  }>,
-) {
-  const frameNotes = frames
-    .map(
-      (frame, index) =>
-        `Frame ${index + 1}: ${frame.timestamp.toFixed(2)}s, local sharpness ${frame.sharpness.toFixed(2)}, visual change from prior candidate ${frame.difference.toFixed(2)}`,
-    )
-    .join("\n");
-
-  return `You are reconstructing a document for helptai. The user recorded one continuous scroll through a book or bound document. The images are ordered candidate frames, already filtered locally for blur and near-duplicates.
-
-Document name: ${documentName}
-
-${frameNotes}
-
-Inspect the images in sequence. Combine overlapping frames into logical pages or sections. Do not invent content. For each reconstructed page, return:
-- pageNumber: 1-based order
-- title: a short descriptive title, or "Untitled page"
-- text: the readable text from that page, preserving paragraphs where possible
-- confidence: a number from 0 to 1 based on readability, completeness, and overlap
-- needsReview: true when text is materially hard to read, the page is incomplete, or the sequence has a gap
-- reviewReason: a calm, plain-language explanation when needsReview is true, otherwise null
-
-Return only JSON in this exact shape:
-{"pages":[{"pageNumber":1,"title":"...","text":"...","confidence":0.92,"needsReview":false,"reviewReason":null}]}
-
-Keep the page list concise. If several candidate frames show the same page, merge them.`;
-}
-
-function parseModelResult(text: string) {
-  try {
-    const cleaned = text
-      .trim()
-      .replace(/^```json\s*/i, "")
-      .replace(/^```\s*/i, "")
-      .replace(/\s*```$/i, "");
-    const value: unknown = JSON.parse(cleaned);
-    if (!value || typeof value !== "object" || !Array.isArray((value as { pages?: unknown }).pages)) {
-      return null;
-    }
-    const pages = (value as { pages: unknown[] }).pages
-      .map((page, index) => normalizePage(page, index))
-      .filter((page): page is NonNullable<typeof page> => page !== null);
-    return pages.length ? { pages } : null;
-  } catch {
-    return null;
-  }
-}
-
-function normalizePage(value: unknown, index: number) {
-  if (!value || typeof value !== "object") return null;
-  const page = value as Record<string, unknown>;
-  const confidence = Number(page.confidence);
-  if (!Number.isFinite(confidence)) return null;
-  const normalizedConfidence = Math.max(0, Math.min(1, confidence));
-  const needsReview =
-    page.needsReview === true || normalizedConfidence < 0.72;
-  return {
-    pageNumber: Number.isInteger(page.pageNumber) && Number(page.pageNumber) > 0
-      ? Number(page.pageNumber)
-      : index + 1,
-    title: typeof page.title === "string" && page.title.trim()
-      ? page.title.trim()
-      : "Untitled page",
-    text: typeof page.text === "string" ? page.text.trim() : "",
-    confidence: normalizedConfidence,
-    needsReview,
-    reviewReason: needsReview
-      ? typeof page.reviewReason === "string" && page.reviewReason.trim()
-        ? page.reviewReason.trim()
-        : "The text was hard to read from the capture."
-      : null,
-  };
 }
 
 export default router;

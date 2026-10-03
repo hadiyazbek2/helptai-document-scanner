@@ -19,27 +19,12 @@ import {
   X,
 } from 'lucide-react';
 import { downloadDocx, downloadPdf, downloadPptx } from '@/lib/exports';
+import type { ProcessDocumentResult } from '@helptai/api-client-react';
+import { buildDoc, type Doc, type Page } from '@/lib/doc-model';
 import { selectVideoFrames, type SelectedFrame } from '@/lib/video-processing';
 
 type View = 'home' | 'frames' | 'processing' | 'review' | 'patch';
 type ToastTone = 'sage' | 'amber';
-type ReconstructedPage = {
-  pageNumber: number;
-  title: string;
-  text: string;
-  confidence: number;
-  needsReview: boolean;
-  reviewReason: string | null;
-  sourceFrame?: SelectedFrame;
-};
-type DocumentAnalysis = {
-  documentName: string;
-  pages: ReconstructedPage[];
-  selectedFrameCount: number;
-  discardedFrameCount: number;
-  processingNote: string;
-};
-
 function Mark() {
   return (
     <span className="mark" aria-label="helptai mark" data-testid="brand-mark">
@@ -254,7 +239,7 @@ function FrameReviewView({
   );
 }
 
-function DocumentSheet({ page }: { page: ReconstructedPage | null }) {
+function DocumentSheet({ page }: { page: Page | null }) {
   const textLines = (page?.text || 'No readable text was returned for this page.')
     .split(/\n+/)
     .filter(Boolean)
@@ -264,10 +249,10 @@ function DocumentSheet({ page }: { page: ReconstructedPage | null }) {
       <div className="sheet-lines" />
       <div className="sheet-content">
         <div className="sheet-topline"><span>reconstructed page</span><span>page {String(page?.pageNumber ?? 1).padStart(2, '0')}</span></div>
-        {page?.sourceFrame ? (
+        {page?.image ? (
           <img
             className="sheet-image"
-            src={page.sourceFrame.dataUrl}
+            src={page.image}
             alt={`Image-faithful layout for reconstructed page ${page.pageNumber}`}
           />
         ) : (
@@ -322,7 +307,7 @@ function ReviewView({
   onExport,
 }: {
   documentName: string;
-  analysis: DocumentAnalysis;
+  analysis: Doc;
   patchDone: boolean;
   selectedPageNumber: number;
   onSelectPage: (pageNumber: number) => void;
@@ -330,7 +315,7 @@ function ReviewView({
   onExport: (format: string) => void;
 }) {
   const selectedPage = analysis.pages.find((page) => page.pageNumber === selectedPageNumber) ?? analysis.pages[0] ?? null;
-  const flaggedPage = analysis.pages.find((page) => page.needsReview) ?? null;
+  const flaggedPage = analysis.pages.find((page) => page.status === 'needs-review') ?? null;
   return (
     <main className="review-page" data-testid="view-review">
       <div className="review-header">
@@ -346,11 +331,11 @@ function ReviewView({
           <div className="thumb-strip" aria-label="Document pages">
             {analysis.pages.map((page) => (
               <button
-                className={`thumb${page.pageNumber === selectedPage?.pageNumber ? ' current' : ''}${page.needsReview ? ' thumb-flagged' : ''}`}
+                className={`thumb${page.pageNumber === selectedPage?.pageNumber ? ' current' : ''}${page.status === 'needs-review' ? ' thumb-flagged' : ''}`}
                 key={page.pageNumber}
                 onClick={() => onSelectPage(page.pageNumber)}
                 data-testid={`thumbnail-page-${page.pageNumber}`}
-                aria-label={`Open page ${page.pageNumber}${page.needsReview ? ', needs review' : ''}`}
+                aria-label={`Open page ${page.pageNumber}${page.status === 'needs-review' ? ', needs review' : ''}`}
               >
                 <span>{String(page.pageNumber).padStart(2, '0')}</span>
               </button>
@@ -541,7 +526,7 @@ function App() {
   const [view, setView] = useState<View>('home');
   const [documentName, setDocumentName] = useState('Untitled document');
   const [recentName, setRecentName] = useState<string | null>(null);
-  const [analysis, setAnalysis] = useState<DocumentAnalysis | null>(null);
+  const [analysis, setAnalysis] = useState<Doc | null>(null);
   const [selectedFrames, setSelectedFrames] = useState<SelectedFrame[]>([]);
   const [selectedPageNumber, setSelectedPageNumber] = useState(1);
   const [processingStatus, setProcessingStatus] = useState('Preparing your capture…');
@@ -607,22 +592,16 @@ function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ documentName, frames: selectedFrames }),
       });
-      const payload = await response.json().catch(() => null) as Partial<DocumentAnalysis> & { error?: string } | null;
+      const payload = await response.json().catch(() => null) as (Partial<ProcessDocumentResult> & { error?: string }) | null;
       if (!response.ok) {
         throw new Error(payload?.error || 'The document could not be analyzed.');
       }
       if (!payload?.pages?.length) {
         throw new Error('No reconstructed pages were returned for this capture.');
       }
-      const result = {
-        ...(payload as DocumentAnalysis),
-        pages: payload.pages.map((page, index) => ({
-          ...page,
-          sourceFrame: selectedFrames[Math.min(index, selectedFrames.length - 1)],
-        })),
-      };
+      const result = buildDoc(documentName, payload as ProcessDocumentResult, selectedFrames);
       setAnalysis(result);
-      setSelectedPageNumber(result.pages.find((page) => page.needsReview)?.pageNumber ?? result.pages[0].pageNumber);
+      setSelectedPageNumber(result.pages.find((page) => page.status === 'needs-review')?.pageNumber ?? result.pages[0].pageNumber);
       setProcessingStatus('Document reconstructed.');
       setView('review');
     } catch (error) {
@@ -712,7 +691,7 @@ function App() {
     setToast({ message: `Page ${String(selectedPageNumber).padStart(2, '0')} has been refreshed.`, tone: 'sage' });
   };
 
-  const flaggedPage = analysis?.pages.find((page) => page.needsReview) ?? null;
+  const flaggedPage = analysis?.pages.find((page) => page.status === 'needs-review') ?? null;
   const openPatch = () => {
     if (flaggedPage) setSelectedPageNumber(flaggedPage.pageNumber);
     setView('patch');

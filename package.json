@@ -18,7 +18,8 @@
     "dev": "concurrently -n api,web -c blue,green \"npm run dev -w @helptai/api-server\" \"npm run dev -w @helptai/helptai\"",
     "build": "npm run typecheck && npm run build --workspaces --if-present",
     "typecheck": "npm run typecheck:libs && npm run typecheck --workspaces --if-present",
-    "typecheck:libs": "tsc --build"
+    "typecheck:libs": "tsc --build",
+    "test": "npm run test --workspaces --if-present"
   },
   "devDependencies": {
     "concurrently": "^9.2.0",

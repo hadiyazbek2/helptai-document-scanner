@@ -31,7 +31,7 @@ export const processDocumentBodyFramesItemSharpnessMin = 0;
 
 export const processDocumentBodyFramesItemDifferenceMin = 0;
 
-export const processDocumentBodyFramesMax = 12;
+export const processDocumentBodyFramesMax = 30;
 
 
 
@@ -49,6 +49,11 @@ export const ProcessDocumentBody = zod.object({
 export const processDocumentResponsePagesItemConfidenceMin = 0;
 export const processDocumentResponsePagesItemConfidenceMax = 1;
 
+export const processDocumentResponsePagesItemSourceFrameIndicesItemMin = 0;
+
+
+export const processDocumentResponsePagesItemBestFrameIndexMin = 0;
+
 
 
 export const ProcessDocumentResponse = zod.object({
@@ -59,7 +64,10 @@ export const ProcessDocumentResponse = zod.object({
   "text": zod.string(),
   "confidence": zod.number().min(processDocumentResponsePagesItemConfidenceMin).max(processDocumentResponsePagesItemConfidenceMax),
   "needsReview": zod.boolean(),
-  "reviewReason": zod.string().nullable()
+  "reviewReason": zod.string().nullable(),
+  "sourceFrameIndices": zod.array(zod.number().int().min(processDocumentResponsePagesItemSourceFrameIndicesItemMin)).min(1).describe('Zero-based indices (into the request frames) of every frame that shows this page.'),
+  "bestFrameIndex": zod.number().int().min(processDocumentResponsePagesItemBestFrameIndexMin).describe('Zero-based index of the frame that shows this page most clearly. Always one of sourceFrameIndices.'),
+  "modelUsed": zod.string().optional().describe('Gemini model that produced this page.')
 })),
   "selectedFrameCount": zod.number().int(),
   "discardedFrameCount": zod.number().int(),
