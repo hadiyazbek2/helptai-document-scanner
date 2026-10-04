@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { buildPagePrompt, buildPrompt, mainPage } from "./analysis";
 import { resetModelCooldowns } from "./gemini-call";
-import { analyzeWith, type GenerateFn } from "./gemini-run";
+import { analyzeWith, buildParts, type GenerateFn } from "./gemini-run";
 
 const frames = [{ timestamp: 0, sharpness: 1, difference: 0 }];
 const goodText = JSON.stringify({
@@ -74,10 +74,30 @@ describe("page prompts", () => {
   it("keeps the whole-document prompt unchanged in what it asks for", () => {
     const prompt = buildPrompt("Doc", [{ timestamp: 1, sharpness: 0.9, difference: 0 }]);
     expect(prompt).toContain("sourceFrames: the frame numbers");
+    expect(prompt).toContain("fill in any text it hides");
     expect(prompt).toContain("Frame 1: 1.00s");
   });
   it("keeps the page with the most text when a retake returns several", () => {
     const page = (text: string) => ({ text }) as Parameters<typeof mainPage>[0][number];
     expect(mainPage([page("a"), page("longer text"), page("mid")]).text).toBe("longer text");
+  });
+});
+
+describe("buildParts", () => {
+  it("puts each image's label immediately before that image", () => {
+    const parts = buildParts("instructions", [
+      { mimeType: "image/jpeg", data: "AAA", label: "Frame 1 (0.0s):" },
+      { mimeType: "image/jpeg", data: "BBB", label: "Frame 2 (1.2s):" },
+    ]);
+    expect(parts).toEqual([
+      { text: "instructions" },
+      { text: "Frame 1 (0.0s):" },
+      { inlineData: { mimeType: "image/jpeg", data: "AAA" } },
+      { text: "Frame 2 (1.2s):" },
+      { inlineData: { mimeType: "image/jpeg", data: "BBB" } },
+    ]);
+  });
+  it("works without labels", () => {
+    expect(buildParts("x", [{ mimeType: "image/png", data: "Z" }])).toHaveLength(2);
   });
 });

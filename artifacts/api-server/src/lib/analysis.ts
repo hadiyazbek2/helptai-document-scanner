@@ -85,13 +85,13 @@ export function buildPrompt(documentName: string, frames: FrameInfo[]) {
     )
     .join("\n");
 
-  return `You are reconstructing a document for helptai. The user recorded one continuous scroll through a book, notebook or bound document. The images are ordered candidate frames, already filtered locally for blur and repeats. The local clarity number is only a rough hint; judge clarity yourself from the images.
+  return `You are reconstructing a document for helptai. The user recorded one continuous scroll through a book, notebook or bound document. The images follow, in order; each is preceded by a line giving its frame number ("Frame 8 (10.4s):"). Use exactly those numbers. They are candidate frames, already filtered locally for blur and repeats. The local clarity number is only a rough hint; judge clarity yourself from the images.
 
 Document name: ${documentName}
 
 ${frameNotes}
 
-Inspect the images in sequence. Several frames often show the same page, and a frame can show parts of two pages while a page is being turned. Group the frames into logical pages in reading order. Do not invent content. For each page return:
+Inspect the images in sequence. Several frames often show the same page, and a frame can show parts of two pages while a page is being turned. When several frames show the same page, one of them may have a hand, a finger or blur over part of the text: read the clearest frame as the bestFrame, and use the other frames of that page to fill in any text it hides. Group the frames into logical pages in reading order. Do not invent content. For each page return:
 ${PAGE_FIELDS}
 
 Frames that only show a page turn, a hand, or the table, with no readable page, belong to no page. Keep the page list concise: if several frames show the same page, merge them into one page.`;

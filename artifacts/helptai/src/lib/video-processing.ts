@@ -23,11 +23,12 @@ const SIGNATURE_EDGE = 200; // long edge for comparing views
 const OUTPUT_EDGE = 1400; // long edge of the frames we keep and send
 const OUTPUT_QUALITY = 0.82;
 const MAX_SAMPLES = 150;
-const MAX_FRAMES = 30;
+const MAX_FRAMES = 45;
 
 export async function selectVideoFrames(
   file: File,
   onProgress?: (message: string) => void,
+  options: { method?: 'auto' | 'seek' } = {},
 ): Promise<SelectedFrame[]> {
   const url = URL.createObjectURL(file);
   const video = document.createElement('video');
@@ -44,22 +45,30 @@ export async function selectVideoFrames(
     const signature = makeCanvas(video, SIGNATURE_EDGE);
 
     const step = Math.max(0.2, duration / MAX_SAMPLES);
-    const timestamps: number[] = [];
-    for (let t = 0; t < duration - 0.05; t += step) timestamps.push(t);
-    if (!timestamps.length) timestamps.push(0);
+    const total = Math.max(1, Math.floor((duration - 0.05) / step) + 1);
 
-    const samples: Sample[] = [];
-    for (let index = 0; index < timestamps.length; index += 1) {
-      await seekVideo(video, timestamps[index]);
+    const measure = (timestamp: number): Sample => {
       analysis.context.drawImage(video, 0, 0, analysis.canvas.width, analysis.canvas.height);
       signature.context.drawImage(video, 0, 0, signature.canvas.width, signature.canvas.height);
-      samples.push({
-        timestamp: timestamps[index],
+      return {
+        timestamp,
         sharpness: frameSharpness(toGray(analysis.context.getImageData(0, 0, analysis.canvas.width, analysis.canvas.height))),
         signature: normalize(toGray(signature.context.getImageData(0, 0, signature.canvas.width, signature.canvas.height))),
-      });
-      onProgress?.(`Looking at frame ${index + 1} of ${timestamps.length}…`);
+      };
+    };
+    const progress = (count: number) => onProgress?.(`Looking at frame ${Math.min(count, total)} of ${total}…`);
+
+    // Playing the video quickly is about twice as fast as jumping to every sample (seeking costs
+    // ~100 ms each); browsers without frame callbacks, or where playback stalls, seek instead.
+    let samples: Sample[] = [];
+    if (options.method !== 'seek' && supportsFrameCallback(video)) {
+      try {
+        samples = await sampleByPlayback(video, step, duration, measure, progress);
+      } catch {
+        samples = [];
+      }
     }
+    if (samples.length < 2) samples = await sampleBySeeking(video, step, duration, measure, progress);
 
     onProgress?.('Choosing the clearest view of each page…');
     const { chosen } = selectBestFrames(samples, { step, maxFrames: MAX_FRAMES });
@@ -86,6 +95,72 @@ export async function selectVideoFrames(
   } finally {
     URL.revokeObjectURL(url);
   }
+}
+
+type VideoWithFrames = HTMLVideoElement & {
+  requestVideoFrameCallback: (callback: (now: number, metadata: { mediaTime: number }) => void) => number;
+};
+
+function supportsFrameCallback(video: HTMLVideoElement): video is VideoWithFrames {
+  return typeof (video as Partial<VideoWithFrames>).requestVideoFrameCallback === 'function';
+}
+
+// One sample every `step` seconds, read as the video plays at high speed.
+async function sampleByPlayback(
+  video: VideoWithFrames,
+  step: number,
+  duration: number,
+  measure: (timestamp: number) => Sample,
+  progress: (count: number) => void,
+): Promise<Sample[]> {
+  await seekVideo(video, 0);
+  video.playbackRate = 4;
+  const samples: Sample[] = [];
+  let next = 0;
+  await new Promise<void>((resolve, reject) => {
+    let watchdog = window.setTimeout(() => reject(new Error('Playback stalled.')), 5000);
+    const finish = () => {
+      window.clearTimeout(watchdog);
+      video.pause();
+      resolve();
+    };
+    const onFrame = (_now: number, metadata: { mediaTime: number }) => {
+      window.clearTimeout(watchdog);
+      watchdog = window.setTimeout(() => reject(new Error('Playback stalled.')), 5000);
+      const time = metadata.mediaTime;
+      if (time >= next - 1e-3) {
+        samples.push(measure(time));
+        progress(samples.length);
+        while (next <= time) next += step; // never fall behind if frames were skipped
+      }
+      if (video.ended || time >= duration - 0.06) finish();
+      else video.requestVideoFrameCallback(onFrame);
+    };
+    video.addEventListener('ended', finish, { once: true });
+    video.requestVideoFrameCallback(onFrame);
+    video.play().catch(reject);
+  }).catch((error) => {
+    video.pause();
+    throw error;
+  });
+  return samples;
+}
+
+async function sampleBySeeking(
+  video: HTMLVideoElement,
+  step: number,
+  duration: number,
+  measure: (timestamp: number) => Sample,
+  progress: (count: number) => void,
+): Promise<Sample[]> {
+  video.playbackRate = 1;
+  const samples: Sample[] = [];
+  for (let t = 0; t < duration - 0.05 || !samples.length; t += step) {
+    await seekVideo(video, t);
+    samples.push(measure(t));
+    progress(samples.length);
+  }
+  return samples;
 }
 
 function makeCanvas(video: HTMLVideoElement, longEdge: number) {

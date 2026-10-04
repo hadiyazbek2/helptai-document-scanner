@@ -2,6 +2,21 @@ import { parseModelResult, type AnalyzedPage, type FrameInfo } from "./analysis"
 import { BlockedOutputError, InvalidOutputError, runWithModelFallback, type FallbackEvent } from "./gemini-call";
 import { buildTargets, parseTarget } from "./gemini-config";
 
+export type PromptImage = { mimeType: string; data: string; label?: string };
+
+// The parts of the request: the instructions, then each image preceded by its own label
+// ("Frame 8 ..."). A label right next to its picture keeps the model from losing count when
+// there are many frames, which a list of numbers ahead of all the images does not.
+export function buildParts(prompt: string, images: PromptImage[]) {
+  return [
+    { text: prompt },
+    ...images.flatMap((image) => [
+      ...(image.label ? [{ text: image.label }] : []),
+      { inlineData: { mimeType: image.mimeType, data: image.data } },
+    ]),
+  ];
+}
+
 export type Usage = { model: string; inputTokens: number; outputTokens: number; thinkingTokens: number };
 
 // One call to Gemini, as the pieces we need from its response.

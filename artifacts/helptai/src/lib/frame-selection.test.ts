@@ -20,7 +20,7 @@ const flip: Array<[number, number]> = [[90, 0.05], [91, 0.08], [92, 0.06]];
 
 describe('selectBestFrames', () => {
   it('picks one sharp frame per page and none of the blurry page turns', () => {
-    const samples = timeline([...repeat(1, 2, 6), ...flip, ...repeat(2, 2.4, 6), ...flip, ...repeat(3, 1.8, 6)]);
+    const samples = timeline([...repeat(1, 2, 4), ...flip, ...repeat(2, 2.4, 4), ...flip, ...repeat(3, 1.8, 4)]);
     const { chosen } = selectBestFrames(samples, { step: STEP });
     expect(chosen).toHaveLength(3);
     chosen.forEach((i) => expect(samples[i].sharpness).toBeGreaterThan(1.5));
@@ -32,7 +32,7 @@ describe('selectBestFrames', () => {
   });
 
   it('drops a lone, barely-sharp frame (the tail of a page turn)', () => {
-    const samples = timeline([...repeat(1, 2, 6), ...flip, [2, 0.5], ...flip, ...repeat(3, 2, 6)]);
+    const samples = timeline([...repeat(1, 2, 4), ...flip, [2, 0.5], ...flip, ...repeat(3, 2, 4)]);
     const { chosen } = selectBestFrames(samples, { step: STEP });
     expect(chosen).toHaveLength(2);
   });
@@ -45,8 +45,8 @@ describe('selectBestFrames', () => {
   it('re-joins a view split by a single blurry frame when it looks the same', () => {
     const samples = timeline([...repeat(1, 2, 5), [1, 0.1], ...repeat(1, 1.9, 5)]);
     const { views, chosen } = selectBestFrames(samples, { step: STEP });
-    expect(views).toHaveLength(1);
-    expect(chosen).toHaveLength(1);
+    expect(views).toHaveLength(1); // one view (and so one main frame plus backups), not two
+    expect(chosen.length).toBeLessThanOrEqual(3);
   });
 
   it('does not re-join views separated by a longer blur', () => {
@@ -54,16 +54,39 @@ describe('selectBestFrames', () => {
     expect(selectBestFrames(samples, { step: STEP }).views).toHaveLength(2);
   });
 
-  it('adds a well-separated backup frame for long views only', () => {
-    const long = timeline(repeat(1, 2, 16).map(([p, s], i): [number, number] => [p, i === 2 ? 3 : i === 12 ? 2.5 : s - 0.5]));
-    const { chosen } = selectBestFrames(long, { step: STEP });
-    expect(times(long, chosen).length).toBe(2);
-    expect(Math.abs(long[chosen[0]].timestamp - long[chosen[1]].timestamp)).toBeGreaterThanOrEqual(1);
-    expect(selectBestFrames(timeline(repeat(1, 2, 6)), { step: STEP }).chosen).toHaveLength(1);
+  it('gives longer views more candidates, spread out in time, and short views just one', () => {
+    const view = (n: number) => timeline(repeat(1, 2, n).map(([p, s], i): [number, number] => [p, i === 2 ? 3 : s - 0.5]));
+    const long = view(16); // 3.2 s
+    const picks = selectBestFrames(long, { step: STEP }).chosen;
+    expect(picks).toHaveLength(3);
+    const at = picks.map((i) => long[i].timestamp).sort((a, b) => a - b);
+    expect(at[1] - at[0]).toBeGreaterThanOrEqual(0.8);
+    expect(at[2] - at[1]).toBeGreaterThanOrEqual(0.8);
+    expect(selectBestFrames(view(7), { step: STEP }).chosen).toHaveLength(2);
+    expect(selectBestFrames(view(4), { step: STEP }).chosen).toHaveLength(1);
+  });
+
+  it('keeps the sharpest frame as the main pick even when backups exist', () => {
+    const samples = timeline(repeat(1, 2, 12).map(([p, s], i): [number, number] => [p, i === 8 ? 3.2 : s]));
+    const { chosen } = selectBestFrames(samples, { step: STEP });
+    expect(chosen).toContain(8);
+  });
+
+  it('drops backups before any page\'s main frame when over the cap', () => {
+    const frames: Array<[number, number]> = [];
+    for (let p = 1; p <= 4; p += 1) frames.push(...repeat(p, 2 + p * 0.1, 12), ...flip);
+    const samples = timeline(frames);
+    const all = selectBestFrames(samples, { step: STEP }).chosen;
+    expect(all.length).toBe(12); // 4 pages x 3 candidates
+    const capped = selectBestFrames(samples, { step: STEP, maxFrames: 4 }).chosen;
+    expect(capped).toHaveLength(4);
+    // One frame from each of the four pages (each page spans 12 samples + 3 flip samples).
+    const pageOf = (i: number) => Math.floor(i / 15);
+    expect(new Set(capped.map(pageOf)).size).toBe(4);
   });
 
   it('skips a view that is a near-identical repeat of an earlier pick', () => {
-    const samples = timeline([...repeat(1, 2, 5), ...flip, ...repeat(1, 1.8, 5)]);
+    const samples = timeline([...repeat(1, 2, 4), ...flip, ...repeat(1, 1.8, 4)]);
     expect(selectBestFrames(samples, { step: STEP }).chosen).toHaveLength(1);
   });
 

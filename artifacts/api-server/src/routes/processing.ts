@@ -4,7 +4,7 @@ import { clients } from "@helptai/integrations-gemini-ai";
 import { buildPagePrompt, buildPrompt, mainPage, RESPONSE_SCHEMA } from "../lib/analysis";
 import { AllModelsFailedError } from "../lib/gemini-call";
 import { getModelChain } from "../lib/gemini-config";
-import { analyzeWith, type GenerateFn } from "../lib/gemini-run";
+import { analyzeWith, buildParts, type GenerateFn, type PromptImage } from "../lib/gemini-run";
 
 const router: IRouter = Router();
 
@@ -36,13 +36,8 @@ function sendError(res: Response, code: ErrorResponseCode, message = MESSAGES[co
 }
 
 // Builds the function that makes one real Gemini call for the given images and prompt.
-function makeGenerate(prompt: string, images: Array<{ mimeType: string; data: string }>): GenerateFn {
-  const contents = [
-    {
-      role: "user" as const,
-      parts: [{ text: prompt }, ...images.map((image) => ({ inlineData: image }))],
-    },
-  ];
+function makeGenerate(prompt: string, images: PromptImage[]): GenerateFn {
+  const contents = [{ role: "user" as const, parts: buildParts(prompt, images) }];
   return async ({ model, keyIndex }) => {
     const response = await clients[keyIndex].models.generateContent({
       model,
@@ -85,7 +80,12 @@ router.post("/process-document", async (req, res) => {
 
   try {
     const { pages, model, usage } = await analyzeWith(
-      makeGenerate(buildPrompt(documentName, frames), inlineFrames.flatMap((frame) => (frame ? [frame] : []))),
+      makeGenerate(
+        buildPrompt(documentName, frames),
+        inlineFrames.flatMap((frame, index) =>
+          frame ? [{ ...frame, label: `Frame ${index + 1} (${frames[index].timestamp.toFixed(1)}s):` }] : [],
+        ),
+      ),
       frames,
       { models: getModelChain(), keyCount: clients.length, onEvent: logAttempt(req) },
     );
@@ -123,7 +123,7 @@ router.post("/process-page", async (req, res) => {
   const { documentName, pageNumber } = parsed.data;
   try {
     const { pages, model, usage } = await analyzeWith(
-      makeGenerate(buildPagePrompt(documentName, pageNumber), [image]),
+      makeGenerate(buildPagePrompt(documentName, pageNumber), [{ ...image, label: "Frame 1:" }]),
       [{ timestamp: 0, sharpness: 1, difference: 0 }],
       { models: getModelChain(), keyCount: clients.length, onEvent: logAttempt(req) },
     );

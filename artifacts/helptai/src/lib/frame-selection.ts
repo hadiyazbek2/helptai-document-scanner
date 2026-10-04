@@ -15,6 +15,8 @@ export type SelectOptions = {
   mergeBelow?: number;
   // A frame this alike to an earlier pick is a repeat.
   repeatBelow?: number;
+  // Seconds a backup frame must be from the others picked for the same view.
+  backupGap?: number;
 };
 
 export type Selection = {
@@ -38,13 +40,15 @@ function percentile(values: number[], q: number) {
 //  1. drop blurry frames (page turns, motion) using the sharpness score;
 //  2. split the clear frames into views wherever a blurry frame interrupts them;
 //  3. merge two views split by only one blurry frame when they look nearly the same;
-//  4. keep the sharpest frame of each properly clear view, plus a backup from long views in case a
-//     hand covers part of the best one;
+//  4. keep the sharpest frame of each properly clear view, plus up to two well-separated backups
+//     from longer views. A hand over the page cannot be told apart from the page by pixel
+//     statistics (tried and measured), so the AI is given several clear moments of the same page and
+//     picks the unobstructed one;
 //  5. skip near-identical repeats.
 // Splitting too much only costs an extra frame (the AI merges frames of one page); merging two
 // pages would lose one, so the rules lean towards splitting.
 export function selectBestFrames(samples: Sample[], options: SelectOptions): Selection {
-  const { step, maxFrames = 30, mergeBelow = 0.12, repeatBelow = 0.06 } = options;
+  const { step, maxFrames = 45, mergeBelow = 0.12, repeatBelow = 0.06, backupGap = 0.8 } = options;
   if (!samples.length) return { chosen: [], views: [], minSharpness: 0 };
 
   const minSharpness = Math.max(0.15, Math.min(0.45, 0.3 * percentile(samples.map((s) => s.sharpness), 0.9)));
@@ -90,16 +94,28 @@ export function selectBestFrames(samples: Sample[], options: SelectOptions): Sel
   // A view must be properly clear to be kept. A lone, barely-sharp frame is usually the tail of
   // a page turn, so it needs to be very sharp to count when it is the only frame in its view.
   const keepGate = Math.max(minSharpness * 1.3, Math.min(0.7, 0.45 * percentile(samples.map((s) => s.sharpness), 0.9)));
-  const picks: Array<{ index: number; view: number }> = [];
+  // rank 0 is a view's sharpest frame; rank 1 and 2 are backups.
+  const picks: Array<{ index: number; view: number; rank: number }> = [];
   for (const [viewIndex, view] of merged.entries()) {
     const best = [...view].sort(bySharpness)[0];
     const sharpness = samples[best].sharpness;
     if (sharpness < keepGate || (view.length < 2 && sharpness < 1.5)) continue;
-    picks.push({ index: best, view: viewIndex });
-    if (view.length >= 12) {
-      const far = view.filter((i) => Math.abs(samples[i].timestamp - samples[best].timestamp) >= 1.0);
-      const backup = far.sort(bySharpness)[0];
-      if (backup !== undefined && samples[backup].sharpness >= minSharpness * 2) picks.push({ index: backup, view: viewIndex });
+    picks.push({ index: best, view: viewIndex, rank: 0 });
+
+    // Longer views get more candidates: each backup is the clearest frame that is at least
+    // `backupGap` seconds from every frame already picked for this view.
+    const backups = view.length >= 10 ? 2 : view.length >= 5 ? 1 : 0;
+    const taken = [best];
+    for (let rank = 1; rank <= backups; rank += 1) {
+      const candidates = view.filter(
+        (i) =>
+          samples[i].sharpness >= Math.max(keepGate, minSharpness * 2) &&
+          taken.every((other) => Math.abs(samples[i].timestamp - samples[other].timestamp) >= backupGap),
+      );
+      const next = candidates.sort(bySharpness)[0];
+      if (next === undefined) break;
+      taken.push(next);
+      picks.push({ index: next, view: viewIndex, rank });
     }
   }
 
@@ -109,7 +125,7 @@ export function selectBestFrames(samples: Sample[], options: SelectOptions): Sel
     for (const index of [...samples.keys()].sort(bySharpness)) {
       if (picks.length >= 3) break;
       if (picks.every((pick) => Math.abs(samples[pick.index].timestamp - samples[index].timestamp) >= 1)) {
-        picks.push({ index, view: -1 - picks.length });
+        picks.push({ index, view: -1 - picks.length, rank: 0 });
       }
     }
   }
@@ -126,6 +142,12 @@ export function selectBestFrames(samples: Sample[], options: SelectOptions): Sel
     if (!repeat) kept.push(pick);
   }
   chosen = kept.map((pick) => pick.index);
-  if (chosen.length > maxFrames) chosen = chosen.sort(bySharpness).slice(0, maxFrames);
+  // Over the cap: drop backups (lowest rank last) before any view's main frame.
+  if (chosen.length > maxFrames) {
+    const rankOf = new Map(kept.map((pick) => [pick.index, pick.rank]));
+    chosen = chosen
+      .sort((a, b) => (rankOf.get(a) ?? 0) - (rankOf.get(b) ?? 0) || bySharpness(a, b))
+      .slice(0, maxFrames);
+  }
   return { chosen: chosen.sort((a, b) => a - b), views: merged, minSharpness };
 }
