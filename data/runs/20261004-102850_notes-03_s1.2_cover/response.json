@@ -1,0 +1,428 @@
+{
+  "documentName": "notes-03",
+  "pages": [
+    {
+      "pageNumber": 1,
+      "title": "Context free grammar CFG",
+      "text": "Context free grammar CFG\n\nCFG is defined by 4 components G = (V, T, P, S)\nV: Variables\nT: alphabet\nS: the variable that represent the language\nbeing defined\nP: production or rules. the -> symbol is\n\nPushdown automata\n(PDA)\n\nit is non deterministic automata with λ transition\nbut in addition a stack for m which it can store\nstring of stack symbols.\nit is LIFO stack\nPDA involves 7 components P(Q, Σ, Γ, δ, q0, z0, F)\nQ a finite set of states like in FA.\nΣ is a finite set of input symbols\nΓ alphabet of the stack\nq0 is the start state of PDA\nz0 the start of the stack & indicate it is empty\nF the set of accepting states",
+      "confidence": 0.95,
+      "needsReview": false,
+      "reviewReason": null,
+      "sourceFrameIndices": [
+        0
+      ],
+      "bestFrameIndex": 0,
+      "pageBox": [
+        136,
+        6,
+        835,
+        995
+      ],
+      "blocks": [
+        {
+          "type": "heading",
+          "text": "Context free grammar CFG",
+          "level": 1,
+          "box": [
+            201,
+            319,
+            235,
+            755
+          ]
+        },
+        {
+          "type": "lines",
+          "text": "CFG is defined by 4 components G = (V, T, P, S)\nV: Variables\nT: alphabet\nS: the variable that represent the language\nbeing defined\nP: production or rules. the -> symbol is",
+          "box": [
+            227,
+            185,
+            350,
+            891
+          ]
+        },
+        {
+          "type": "heading",
+          "text": "Pushdown automata\n(PDA)",
+          "level": 2,
+          "box": [
+            454,
+            314,
+            506,
+            603
+          ]
+        },
+        {
+          "type": "lines",
+          "text": "it is non deterministic automata with λ transition\nbut in addition a stack for m which it can store\nstring of stack symbols.\nit is LIFO stack\nPDA involves 7 components P(Q, Σ, Γ, δ, q0, z0, F)\nQ a finite set of states like in FA.\nΣ is a finite set of input symbols\nΓ alphabet of the stack\nq0 is the start state of PDA\nz0 the start of the stack & indicate it is empty\nF the set of accepting states",
+          "box": [
+            501,
+            151,
+            752,
+            903
+          ]
+        }
+      ],
+      "modelUsed": "gemini-3.8-flash"
+    },
+    {
+      "pageNumber": 2,
+      "title": "δ the transition function",
+      "text": "δ the transition function\n\nThere are 4 transition that we can make\n1. δ(p, a, A) = (q, λ) this mean we pop A from the stack\n2. δ(p, a, A) = (q, A) we does not change any thing in the stack\n3. δ(p, a, A) = (q, X) we replace A with X in the stack\n4. δ(p, a, A) = (q, XY) we replace A with Y then add X to the stack\n\nConfiguration of PDA\n\nrepresented by:\nTriple (q, w, γ) called instantaneous description or ID\nq is current state\nw is remaining input\nγ is the content of the stack from left to right\n⊢ this notation describe the change\n⊢* stack is from left to right",
+      "confidence": 0.95,
+      "needsReview": false,
+      "reviewReason": null,
+      "sourceFrameIndices": [
+        1,
+        2
+      ],
+      "bestFrameIndex": 1,
+      "pageBox": [
+        175,
+        0,
+        893,
+        1000
+      ],
+      "blocks": [
+        {
+          "type": "heading",
+          "text": "δ the transition function",
+          "level": 2,
+          "box": [
+            247,
+            246,
+            276,
+            626
+          ]
+        },
+        {
+          "type": "lines",
+          "text": "There are 4 transition that we can make\n1. δ(p, a, A) = (q, λ) this mean we pop A from the stack\n2. δ(p, a, A) = (q, A) we does not change any thing in the stack\n3. δ(p, a, A) = (q, X) we replace A with X in the stack\n4. δ(p, a, A) = (q, XY) we replace A with Y then add X to the stack",
+          "box": [
+            287,
+            219,
+            471,
+            995
+          ]
+        },
+        {
+          "type": "heading",
+          "text": "Configuration of PDA",
+          "level": 2,
+          "box": [
+            615,
+            266,
+            659,
+            654
+          ]
+        },
+        {
+          "type": "lines",
+          "text": "represented by:\nTriple (q, w, γ) called instantaneous description or ID\nq is current state\nw is remaining input\nγ is the content of the stack from left to right\n⊢ this notation describe the change\n⊢* stack is from left to right",
+          "box": [
+            649,
+            262,
+            796,
+            996
+          ]
+        }
+      ],
+      "modelUsed": "gemini-3.8-flash"
+    },
+    {
+      "pageNumber": 3,
+      "title": "Deterministic pushdown automata",
+      "text": "Deterministic pushdown automata\n\nDPDA is determined by 2 conditions:\n- ∀ q ∈ Q for each state q ∈ Q\n∀ a ∈ Σ ∪ {λ} for every character a ∈ alphabet\n∀ X ∈ Γ for every X ∈ stack\nthe set δ(q, a, X) has at most one element\n∀ q ∈ Q\n∀ a ∈ Σ ∪ {λ}\n∀ X ∈ Γ\nthe two sets δ(q, a, X) and δ(q, λ, X) cannot\nboth be non empty (at least one is empty)\n\nTop-Down PDA\n\nplace S$ ->",
+      "confidence": 0.9,
+      "needsReview": false,
+      "reviewReason": null,
+      "sourceFrameIndices": [
+        4,
+        5
+      ],
+      "bestFrameIndex": 5,
+      "pageBox": [
+        125,
+        0,
+        875,
+        995
+      ],
+      "blocks": [
+        {
+          "type": "heading",
+          "text": "Deterministic pushdown automata",
+          "level": 2,
+          "box": [
+            193,
+            171,
+            230,
+            672
+          ]
+        },
+        {
+          "type": "lines",
+          "text": "DPDA is determined by 2 conditions:\n- ∀ q ∈ Q for each state q ∈ Q\n∀ a ∈ Σ ∪ {λ} for every character a ∈ alphabet\n∀ X ∈ Γ for every X ∈ stack\nthe set δ(q, a, X) has at most one element\n∀ q ∈ Q\n∀ a ∈ Σ ∪ {λ}\n∀ X ∈ Γ\nthe two sets δ(q, a, X) and δ(q, λ, X) cannot\nboth be non empty (at least one is empty)",
+          "box": [
+            223,
+            142,
+            456,
+            882
+          ]
+        },
+        {
+          "type": "heading",
+          "text": "Top-Down PDA",
+          "level": 2,
+          "box": [
+            464,
+            355,
+            497,
+            613
+          ]
+        },
+        {
+          "type": "lines",
+          "text": "place S$ ->",
+          "box": [
+            492,
+            142,
+            518,
+            290
+          ]
+        }
+      ],
+      "modelUsed": "gemini-3.8-flash"
+    },
+    {
+      "pageNumber": 4,
+      "title": "CFG Ex",
+      "text": "CFG Ex\n\nFind the language generated by the following CFG over alphabet: Σ = {a, b}\n1) S -> aS | bS | λ\n= (a + b)*\n2) S -> SS | bS | a\n= (b* a)*\n3) S -> SaS | b\n= (ba)* b\n4) S -> aT | bT | λ ; T -> aS | bS\n= word of even length\n\nFind a CFG generation the following languages:\n\na) L = (ab)* a\nS -> abS | a\nb) L = (ab)* + (ba)*\nS -> A | B ; A -> abA | λ ; B -> baB | λ\nc) L = a* b (bb)*\nS -> Abb ; A -> aA | λ ; B -> bbB | λ\nd) L = a* b (b* a)*\nS -> A | B\nA -> aA | b\nB -> aB | λ\nC -> bC | λ",
+      "confidence": 0.95,
+      "needsReview": false,
+      "reviewReason": null,
+      "sourceFrameIndices": [
+        6,
+        7
+      ],
+      "bestFrameIndex": 7,
+      "pageBox": [
+        157,
+        0,
+        915,
+        942
+      ],
+      "blocks": [
+        {
+          "type": "heading",
+          "text": "CFG Ex",
+          "level": 1,
+          "box": [
+            241,
+            64,
+            265,
+            276
+          ]
+        },
+        {
+          "type": "lines",
+          "text": "Find the language generated by the following CFG over alphabet: Σ = {a, b}\n1) S -> aS | bS | λ\n= (a + b)*\n2) S -> SS | bS | a\n= (b* a)*\n3) S -> SaS | b\n= (ba)* b\n4) S -> aT | bT | λ ; T -> aS | bS\n= word of even length",
+          "box": [
+            262,
+            23,
+            474,
+            826
+          ]
+        },
+        {
+          "type": "heading",
+          "text": "Find a CFG generation the following languages:",
+          "level": 2,
+          "box": [
+            483,
+            102,
+            517,
+            853
+          ]
+        },
+        {
+          "type": "lines",
+          "text": "a) L = (ab)* a\nS -> abS | a\nb) L = (ab)* + (ba)*\nS -> A | B ; A -> abA | λ ; B -> baB | λ\nc) L = a* b (bb)*\nS -> Abb ; A -> aA | λ ; B -> bbB | λ\nd) L = a* b (b* a)*\nS -> A | B\nA -> aA | b\nB -> aB | λ\nC -> bC | λ",
+          "box": [
+            516,
+            32,
+            782,
+            908
+          ]
+        }
+      ],
+      "modelUsed": "gemini-3.8-flash"
+    },
+    {
+      "pageNumber": 5,
+      "title": "Automata Construction",
+      "text": "CFG generating following language:\na) CFG generating the following:\n1) {a^i b^j / i > j}\nS -> aSb | Sb | λ\n2) {a^i b^j / i <= j <= 2i}\nS -> aSb | aaSb | Sb | λ\n3) {a^i b^j c^k / i = j + k}\nS -> aSc | S\nS -> aSb | λ\n\nAutomata Construction",
+      "confidence": 0.9,
+      "needsReview": false,
+      "reviewReason": null,
+      "sourceFrameIndices": [
+        8,
+        9
+      ],
+      "bestFrameIndex": 9,
+      "pageBox": [
+        53,
+        0,
+        856,
+        1000
+      ],
+      "blocks": [
+        {
+          "type": "lines",
+          "text": "CFG generating following language:\na) CFG generating the following:\n1) {a^i b^j / i > j}\nS -> aSb | Sb | λ\n2) {a^i b^j / i <= j <= 2i}\nS -> aSb | aaSb | Sb | λ\n3) {a^i b^j c^k / i = j + k}\nS -> aSc | S\nS -> aSb | λ",
+          "box": [
+            174,
+            0,
+            397,
+            617
+          ]
+        },
+        {
+          "type": "heading",
+          "text": "Automata Construction",
+          "level": 2,
+          "box": [
+            386,
+            146,
+            420,
+            485
+          ]
+        },
+        {
+          "type": "figure",
+          "text": "",
+          "box": [
+            415,
+            0,
+            521,
+            608
+          ]
+        },
+        {
+          "type": "figure",
+          "text": "",
+          "box": [
+            566,
+            0,
+            755,
+            755
+          ]
+        }
+      ],
+      "modelUsed": "gemini-3.8-flash"
+    },
+    {
+      "pageNumber": 6,
+      "title": "Residual method",
+      "text": "Residual method:\n\nSo we keep dividing until no new state appears and finaly we draw the states.\n\nPalindrome : symmetric with respect to center\n\nCFG Derivation:\n\nRecursive inference :\na) S -> aX | bY | λ\nX -> aS | bZ\nY -> bS | aZ\nZ -> aY | bX\naababa ?\na ∈ Q0, S\nLeft most derivation:\nS -> aX -> aaS -> aabY -> aabaZ -> aababa\nright most derivation:\nSame but start from right\n\nConstruct PDA\n\nSo first the stack is used as memory, so any time we need to remember some thing we use stack - we calculate all the transitions and what we should append to the stack and if we should move to another state.",
+      "confidence": 0.92,
+      "needsReview": false,
+      "reviewReason": null,
+      "sourceFrameIndices": [
+        10,
+        11,
+        12
+      ],
+      "bestFrameIndex": 11,
+      "pageBox": [
+        147,
+        0,
+        882,
+        975
+      ],
+      "blocks": [
+        {
+          "type": "heading",
+          "text": "Residual method:",
+          "level": 2,
+          "box": [
+            222,
+            122,
+            248,
+            375
+          ]
+        },
+        {
+          "type": "paragraph",
+          "text": "So we keep dividing until no new state appears and finaly we draw the states.",
+          "box": [
+            249,
+            116,
+            290,
+            831
+          ]
+        },
+        {
+          "type": "lines",
+          "text": "Palindrome : symmetric with respect to center",
+          "box": [
+            308,
+            134,
+            335,
+            874
+          ]
+        },
+        {
+          "type": "heading",
+          "text": "CFG Derivation:",
+          "level": 2,
+          "box": [
+            346,
+            134,
+            372,
+            389
+          ]
+        },
+        {
+          "type": "lines",
+          "text": "Recursive inference :\na) S -> aX | bY | λ\nX -> aS | bZ\nY -> bS | aZ\nZ -> aY | bX\naababa ?\na ∈ Q0, S\nLeft most derivation:\nS -> aX -> aaS -> aabY -> aabaZ -> aababa\nright most derivation:\nSame but start from right",
+          "box": [
+            372,
+            85,
+            621,
+            888
+          ]
+        },
+        {
+          "type": "heading",
+          "text": "Construct PDA",
+          "level": 2,
+          "box": [
+            631,
+            150,
+            663,
+            429
+          ]
+        },
+        {
+          "type": "paragraph",
+          "text": "So first the stack is used as memory, so any time we need to remember some thing we use stack - we calculate all the transitions and what we should append to the stack and if we should move to another state.",
+          "box": [
+            662,
+            116,
+            773,
+            915
+          ]
+        }
+      ],
+      "modelUsed": "gemini-3.8-flash"
+    }
+  ],
+  "selectedFrameCount": 13,
+  "discardedFrameCount": 1,
+  "processingNote": "Frames were filtered locally before Gemini checked their order, text, and confidence.",
+  "usage": {
+    "model": "gemini-3.8-flash",
+    "inputTokens": 15399,
+    "outputTokens": 2915,
+    "thinkingTokens": 4888
+  }
+}

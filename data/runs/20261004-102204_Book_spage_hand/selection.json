@@ -1,0 +1,58 @@
+{
+  "video": "Book",
+  "duration": 18.228756,
+  "width": 478,
+  "height": 850,
+  "seconds": 5.84,
+  "frames": [
+    {
+      "timestamp": 0.1,
+      "clarity": 0.882,
+      "hand": 0,
+      "width": 478,
+      "height": 850
+    },
+    {
+      "timestamp": 1.03,
+      "clarity": 0.99,
+      "hand": 0,
+      "width": 478,
+      "height": 850
+    },
+    {
+      "timestamp": 3.03,
+      "clarity": 0.95,
+      "hand": 0.011,
+      "width": 478,
+      "height": 850
+    },
+    {
+      "timestamp": 6.83,
+      "clarity": 0.731,
+      "hand": 0.007,
+      "width": 478,
+      "height": 850
+    },
+    {
+      "timestamp": 9.5,
+      "clarity": 0.999,
+      "hand": 0,
+      "width": 478,
+      "height": 850
+    },
+    {
+      "timestamp": 12.03,
+      "clarity": 0.852,
+      "hand": 0.008,
+      "width": 478,
+      "height": 850
+    },
+    {
+      "timestamp": 17.63,
+      "clarity": 0.961,
+      "hand": 0,
+      "width": 478,
+      "height": 850
+    }
+  ]
+}

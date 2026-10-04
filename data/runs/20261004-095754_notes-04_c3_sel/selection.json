@@ -1,0 +1,27 @@
+{
+  "video": "notes-04",
+  "duration": 13.7303,
+  "width": 848,
+  "height": 478,
+  "seconds": 3.9,
+  "frames": [
+    {
+      "timestamp": 0.03,
+      "clarity": 1,
+      "width": 848,
+      "height": 478
+    },
+    {
+      "timestamp": 1.83,
+      "clarity": 1,
+      "width": 848,
+      "height": 478
+    },
+    {
+      "timestamp": 4.83,
+      "clarity": 1,
+      "width": 848,
+      "height": 478
+    }
+  ]
+}

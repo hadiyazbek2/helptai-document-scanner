@@ -5,7 +5,7 @@ Everything the tests produce is saved here so you can look at it later.
 | Path | What it is |
 |---|---|
 | `usage.csv` | **One row per Gemini request** (including failed or refused attempts): time, endpoint, model, API key number, outcome, how long it took, how many frames were sent, and the **input / output / thinking / total tokens**. The server writes it automatically every time it calls Gemini. The first five rows were measured by hand earlier. |
-| `results.csv` | **One row per test run** (`npm run eval`): which video, how many frames were kept, how long selection took, how many pages came back, whether they match the expected pages, tokens and estimated cost. |
+| `results.csv` | **One row per test run** (`npm run eval`): which video, the frame setting (`slot`), how many frames were kept and how many have a hand on them, how long selection took, how many pages came back, whether they match the expected pages, tokens and estimated cost. `results-v1.csv` holds the very first runs, made before hand detection. |
 | `runs/<run>/` | Everything about one run: `selection.json` (every kept frame with its time and clarity), `frames/` (the kept frames, not saved in git), `response.json` (Gemini's full answer), `pages.md` (a readable summary of each page), `summary.json`. |
 | `videos/` | Test videos (not saved in git, they are large) and `<name>.expected.json` files that say how many pages the video has and when each page is on screen. |
 | `pricing.json` | Gemini prices used to estimate cost. Update it when Google changes prices. |
@@ -16,7 +16,8 @@ Everything the tests produce is saved here so you can look at it later.
 ```bash
 npm run eval -- data/videos/Book.mp4                 # select frames, call Gemini, save everything
 npm run eval -- data/videos/Book.mp4 --no-gemini     # frame selection only (free, no tokens)
-npm run eval -- data/videos/*.mp4 --candidates 1     # compare: only the sharpest frame per page
+npm run eval -- data/videos/*.mp4 --slot page        # compare: only the best frame per detected page
+npm run eval -- data/videos/*.mp4 --slot 2.4         # compare: one frame per 2.4 s instead of 1.2 s
 npm run report                                       # rebuild data/report.md and print it
 ```
 

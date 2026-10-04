@@ -5,6 +5,7 @@ import {
   normalize,
   toGray,
 } from './frame-metrics';
+import { detectHand } from './frame-hand';
 import { selectBestFrames, type Sample } from './frame-selection';
 
 export type SelectionStats = {
@@ -25,10 +26,14 @@ export type SelectedFrame = {
   sharpness: number;
   // How much this view differs from the previously chosen one.
   difference: number;
+  // How much of the page something (a hand) covers (0..1): the larger of the hand found on the
+  // page and the paper hidden compared with nearby frames.
+  hand: number;
 };
 
 const ANALYSIS_EDGE = 800; // long edge for the sharpness measurement
 const SIGNATURE_EDGE = 200; // long edge for comparing views
+const HAND_EDGE = 120; // long edge for finding the page and a hand on it
 const OUTPUT_EDGE = 1400; // long edge of the frames we keep and send
 const OUTPUT_QUALITY = 0.82;
 const MAX_SAMPLES = 150;
@@ -37,8 +42,9 @@ const MAX_FRAMES = 45;
 export async function selectVideoFrames(
   file: File,
   onProgress?: (message: string) => void,
-  // `candidates` is the most frames kept per page view (1 = just the sharpest; default 3).
-  options: { method?: 'auto' | 'seek'; candidates?: number; onStats?: (stats: SelectionStats) => void } = {},
+  // `slotSeconds`: keep about one frame per this many seconds of each page view (default 1.2).
+  // Infinity keeps just the best frame of each detected page view.
+  options: { method?: 'auto' | 'seek'; slotSeconds?: number; onStats?: (stats: SelectionStats) => void } = {},
 ): Promise<SelectedFrame[]> {
   const url = URL.createObjectURL(file);
   const video = document.createElement('video');
@@ -54,17 +60,25 @@ export async function selectVideoFrames(
 
     const analysis = makeCanvas(video, ANALYSIS_EDGE);
     const signature = makeCanvas(video, SIGNATURE_EDGE);
+    const handView = makeCanvas(video, HAND_EDGE);
 
     const step = Math.max(0.2, duration / MAX_SAMPLES);
     const total = Math.max(1, Math.floor((duration - 0.05) / step) + 1);
 
+    const handSignals = (view: ReturnType<typeof makeCanvas>) => {
+      const result = detectHand(view.context.getImageData(0, 0, view.canvas.width, view.canvas.height));
+      return { hand: result.fraction, paperShare: result.paperShare };
+    };
+
     const measure = (timestamp: number): Sample => {
       analysis.context.drawImage(video, 0, 0, analysis.canvas.width, analysis.canvas.height);
       signature.context.drawImage(video, 0, 0, signature.canvas.width, signature.canvas.height);
+      handView.context.drawImage(video, 0, 0, handView.canvas.width, handView.canvas.height);
       return {
         timestamp,
         sharpness: frameSharpness(toGray(analysis.context.getImageData(0, 0, analysis.canvas.width, analysis.canvas.height))),
         signature: normalize(toGray(signature.context.getImageData(0, 0, signature.canvas.width, signature.canvas.height))),
+        ...handSignals(handView),
       };
     };
     const progress = (count: number) => onProgress?.(`Looking at frame ${Math.min(count, total)} of ${total}…`);
@@ -87,10 +101,10 @@ export async function selectVideoFrames(
     }
 
     onProgress?.('Choosing the clearest view of each page…');
-    const { chosen } = selectBestFrames(samples, {
+    const { chosen, cover } = selectBestFrames(samples, {
       step,
       maxFrames: MAX_FRAMES,
-      maxBackups: Math.max(0, Math.min(2, (options.candidates ?? 3) - 1)),
+      slotSeconds: options.slotSeconds ?? 1.2,
     });
 
     // Second pass: re-read only the chosen moments at full quality.
@@ -108,6 +122,7 @@ export async function selectVideoFrames(
         timestamp: sample.timestamp,
         sharpness: clarityFromSharpness(sample.sharpness),
         difference: previous ? alignedDifference(sample.signature, previous.signature) : 1,
+        hand: cover[chosen[position]],
       });
       onProgress?.(`Preparing frame ${position + 1} of ${chosen.length}…`);
     }

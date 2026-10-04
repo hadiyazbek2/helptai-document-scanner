@@ -1,0 +1,100 @@
+{
+  "video": "notes-03",
+  "duration": 14.363089,
+  "width": 478,
+  "height": 850,
+  "seconds": 4.94,
+  "frames": [
+    {
+      "timestamp": 0.7,
+      "clarity": 1,
+      "hand": 0.017,
+      "width": 478,
+      "height": 850
+    },
+    {
+      "timestamp": 1.67,
+      "clarity": 1,
+      "hand": 0,
+      "width": 478,
+      "height": 850
+    },
+    {
+      "timestamp": 1.97,
+      "clarity": 0.958,
+      "hand": 0.02,
+      "width": 478,
+      "height": 850
+    },
+    {
+      "timestamp": 4.23,
+      "clarity": 0.954,
+      "hand": 0.026,
+      "width": 478,
+      "height": 850
+    },
+    {
+      "timestamp": 5.03,
+      "clarity": 1,
+      "hand": 0.018,
+      "width": 478,
+      "height": 850
+    },
+    {
+      "timestamp": 5.63,
+      "clarity": 1,
+      "hand": 0.016,
+      "width": 478,
+      "height": 850
+    },
+    {
+      "timestamp": 7.03,
+      "clarity": 1,
+      "hand": 0,
+      "width": 478,
+      "height": 850
+    },
+    {
+      "timestamp": 8.03,
+      "clarity": 1,
+      "hand": 0.055,
+      "width": 478,
+      "height": 850
+    },
+    {
+      "timestamp": 10.23,
+      "clarity": 1,
+      "hand": 0,
+      "width": 478,
+      "height": 850
+    },
+    {
+      "timestamp": 10.43,
+      "clarity": 1,
+      "hand": 0.005,
+      "width": 478,
+      "height": 850
+    },
+    {
+      "timestamp": 12.43,
+      "clarity": 1,
+      "hand": 0,
+      "width": 478,
+      "height": 850
+    },
+    {
+      "timestamp": 13.83,
+      "clarity": 1,
+      "hand": 0.018,
+      "width": 478,
+      "height": 850
+    },
+    {
+      "timestamp": 14.03,
+      "clarity": 1,
+      "hand": 0.009,
+      "width": 478,
+      "height": 850
+    }
+  ]
+}

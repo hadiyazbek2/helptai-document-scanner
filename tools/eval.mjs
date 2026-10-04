@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Runs helptai's real pipeline on test videos and saves what happened to data/.
 //
-//   npm run eval -- data/videos/Book.mp4 [more videos] [--candidates 1|2|3] [--no-gemini]
+//   npm run eval -- data/videos/Book.mp4 [more videos] [--slot 1.2|page] [--no-gemini]
 //                   [--label text] [--method auto|seek] [--app http://localhost:5173]
 //
 // `npm run dev` must be running. Frame selection runs in headless Chrome using the app's own code;
@@ -16,19 +16,19 @@ const dataDir = path.join(root, 'data');
 
 // ---------- arguments ----------
 const args = process.argv.slice(2);
-const options = { candidates: 3, gemini: true, label: '', method: 'auto', app: 'http://localhost:5173' };
+const options = { slot: '1.2', gemini: true, label: '', method: 'auto', app: 'http://localhost:5173' };
 const videos = [];
 for (let i = 0; i < args.length; i += 1) {
   const arg = args[i];
   if (arg === '--no-gemini') options.gemini = false;
-  else if (arg === '--candidates') options.candidates = Number(args[++i]);
+  else if (arg === '--slot') options.slot = args[++i];
   else if (arg === '--label') options.label = args[++i];
   else if (arg === '--method') options.method = args[++i];
   else if (arg === '--app') options.app = args[++i];
   else videos.push(arg);
 }
 if (!videos.length) {
-  console.error('Usage: npm run eval -- <video> [more videos] [--candidates 1|2|3] [--no-gemini] [--label text]');
+  console.error('Usage: npm run eval -- <video> [more videos] [--slot 1.2|page] [--no-gemini] [--label text]');
   process.exit(1);
 }
 
@@ -48,7 +48,7 @@ const csvCell = (value) => {
   return /[",\n\r]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
 };
 const RESULT_COLUMNS = [
-  'run_id', 'timestamp', 'video', 'duration_s', 'resolution', 'size_mb', 'method', 'candidates', 'frames_kept', 'selection_s',
+  'run_id', 'timestamp', 'video', 'duration_s', 'resolution', 'size_mb', 'method', 'slot', 'frames_kept', 'hand_frames', 'selection_s',
   'expected_pages', 'ranges_covered', 'junk_frames', 'gemini', 'model', 'gemini_s', 'pages', 'pages_match', 'mapping_correct',
   'flagged', 'input_tokens', 'output_tokens', 'thinking_tokens', 'cost_intro_usd', 'cost_standard_usd', 'run_dir',
 ];
@@ -66,19 +66,19 @@ for (const videoArg of videos) {
   const videoPath = path.resolve(videoArg);
   const base = path.basename(videoPath).replace(/\.[^.]+$/, '');
   const stamp = new Date();
-  const id = `${stamp.toISOString().replace(/[-:]/g, '').slice(0, 15).replace('T', '-')}_${base}_c${options.candidates}${options.label ? `_${options.label}` : ''}`;
+  const id = `${stamp.toISOString().replace(/[-:]/g, '').slice(0, 15).replace('T', '-')}_${base}_s${options.slot}${options.label ? `_${options.label}` : ''}`;
   const runDir = path.join(dataDir, 'runs', id);
   mkdirSync(path.join(runDir, 'frames'), { recursive: true });
   const expectedFile = path.join(path.dirname(videoPath), `${base}.expected.json`);
   const expected = existsSync(expectedFile) ? JSON.parse(readFileSync(expectedFile, 'utf8')) : null;
 
-  console.log(`\n=== ${base}  (candidates ${options.candidates}, ${options.gemini ? 'with Gemini' : 'selection only'})`);
+  console.log(`\n=== ${base}  (slot ${options.slot}, ${options.gemini ? 'with Gemini' : 'selection only'})`);
 
   // ---------- 1. frame selection, using the app's own code ----------
   const page = await browser.newPage();
   await page.route('**/__eval_video', (route) => route.fulfill({ status: 200, contentType: 'video/mp4', body: readFileSync(videoPath) }));
   await page.goto(options.app);
-  const selection = await page.evaluate(async ({ method, candidates }) => {
+  const selection = await page.evaluate(async ({ method, slot }) => {
     const { selectVideoFrames } = await import('/src/lib/video-processing.ts');
     const blob = await (await fetch('/__eval_video')).blob();
     const probe = document.createElement('video');
@@ -86,17 +86,17 @@ for (const videoArg of videos) {
     await new Promise((resolve) => (probe.onloadedmetadata = resolve));
     const meta = { duration: probe.duration, width: probe.videoWidth, height: probe.videoHeight };
     const started = performance.now();
-    const frames = await selectVideoFrames(new File([blob], 'video.mp4', { type: blob.type || 'video/mp4' }), undefined, { method, candidates });
+    const frames = await selectVideoFrames(new File([blob], 'video.mp4', { type: blob.type || 'video/mp4' }), undefined, { method, slotSeconds: slot === 'page' ? Infinity : Number(slot) });
     return { meta, seconds: (performance.now() - started) / 1000, frames };
-  }, { method: options.method, candidates: options.candidates });
+  }, { method: options.method, slot: options.slot });
   await page.close();
 
   const { frames, meta } = selection;
   frames.forEach((frame, i) => {
-    const name = `${String(i + 1).padStart(2, '0')}_${frame.timestamp.toFixed(1)}s_clarity${Math.round(frame.sharpness * 100)}.jpg`;
+    const name = `${String(i + 1).padStart(2, '0')}_${frame.timestamp.toFixed(1)}s_clarity${Math.round(frame.sharpness * 100)}_hand${Math.round(frame.hand * 100)}.jpg`;
     writeFileSync(path.join(runDir, 'frames', name), Buffer.from(frame.dataUrl.split(',')[1], 'base64'));
   });
-  const summarySelection = frames.map((f) => ({ timestamp: +f.timestamp.toFixed(2), clarity: +f.sharpness.toFixed(3), width: f.width, height: f.height }));
+  const summarySelection = frames.map((f) => ({ timestamp: +f.timestamp.toFixed(2), clarity: +f.sharpness.toFixed(3), hand: +f.hand.toFixed(3), width: f.width, height: f.height }));
   writeFileSync(path.join(runDir, 'selection.json'), JSON.stringify({ video: base, ...meta, seconds: +selection.seconds.toFixed(2), frames: summarySelection }, null, 2));
 
   // How well did selection do against the hand-labelled page ranges?
@@ -107,7 +107,8 @@ for (const videoArg of videos) {
     rangesCovered = `${expected.ranges.filter((range) => frames.some((f) => inRange(f.timestamp, range))).length}/${expected.ranges.length}`;
     junkFrames = frames.filter((f) => !expected.ranges.some((range) => inRange(f.timestamp, range))).length;
   }
-  console.log(`  selection: ${frames.length} frames in ${selection.seconds.toFixed(1)}s` + (expected ? `, page ranges covered ${rangesCovered}, junk frames ${junkFrames}` : ''));
+  const handFrames = frames.filter((f) => f.hand >= 0.08).length;
+  console.log(`  selection: ${frames.length} frames in ${selection.seconds.toFixed(1)}s, hand on ${handFrames}` + (expected ? `, page ranges covered ${rangesCovered}, junk frames ${junkFrames}` : ''));
 
   // ---------- 2. Gemini, through the app's API ----------
   let model = '';
@@ -154,7 +155,7 @@ for (const videoArg of videos) {
   const [costIntro, costStandard] = cost(model, usage);
   const row = {
     run_id: id, timestamp: stamp.toISOString(), video: base, duration_s: meta.duration.toFixed(1), resolution: `${meta.width}x${meta.height}`,
-    size_mb: (statSync(videoPath).size / 1048576).toFixed(1), method: options.method, candidates: options.candidates, frames_kept: frames.length,
+    size_mb: (statSync(videoPath).size / 1048576).toFixed(1), method: options.method, slot: options.slot, frames_kept: frames.length, hand_frames: handFrames,
     selection_s: selection.seconds.toFixed(1), expected_pages: expected?.pages ?? '', ranges_covered: rangesCovered, junk_frames: junkFrames,
     gemini: options.gemini ? 'yes' : 'no', model, gemini_s: geminiSeconds, pages, pages_match: pagesMatch, mapping_correct: mappingCorrect, flagged,
     input_tokens: usage?.inputTokens ?? '', output_tokens: usage?.outputTokens ?? '', thinking_tokens: usage?.thinkingTokens ?? '',

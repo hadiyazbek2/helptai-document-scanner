@@ -1,0 +1,79 @@
+{
+  "video": "Book",
+  "duration": 18.228756,
+  "width": 478,
+  "height": 850,
+  "seconds": 6.14,
+  "frames": [
+    {
+      "timestamp": 0.13,
+      "clarity": 0.913,
+      "hand": 0.025,
+      "width": 478,
+      "height": 850
+    },
+    {
+      "timestamp": 1.2,
+      "clarity": 0.991,
+      "hand": 0.002,
+      "width": 478,
+      "height": 850
+    },
+    {
+      "timestamp": 3.13,
+      "clarity": 0.943,
+      "hand": 0.025,
+      "width": 478,
+      "height": 850
+    },
+    {
+      "timestamp": 7.23,
+      "clarity": 0.888,
+      "hand": 0.007,
+      "width": 478,
+      "height": 850
+    },
+    {
+      "timestamp": 8.86,
+      "clarity": 0.973,
+      "hand": 0.033,
+      "width": 478,
+      "height": 850
+    },
+    {
+      "timestamp": 9.5,
+      "clarity": 0.999,
+      "hand": 0.033,
+      "width": 478,
+      "height": 850
+    },
+    {
+      "timestamp": 10.46,
+      "clarity": 0.938,
+      "hand": 0.005,
+      "width": 478,
+      "height": 850
+    },
+    {
+      "timestamp": 12.3,
+      "clarity": 0.867,
+      "hand": 0.048,
+      "width": 478,
+      "height": 850
+    },
+    {
+      "timestamp": 16.83,
+      "clarity": 0.911,
+      "hand": 0.006,
+      "width": 478,
+      "height": 850
+    },
+    {
+      "timestamp": 17.63,
+      "clarity": 0.961,
+      "hand": 0,
+      "width": 478,
+      "height": 850
+    }
+  ]
+}
