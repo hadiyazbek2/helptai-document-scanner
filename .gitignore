@@ -52,3 +52,5 @@ data/videos/*.mov
 data/videos/*.m4v
 data/videos/*.webm
 data/runs/*/frames/
+data/videos/*.mkv
+data/videos/*.avi
