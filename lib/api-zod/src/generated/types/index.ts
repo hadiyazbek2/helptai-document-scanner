@@ -15,4 +15,7 @@ export * from './pageBlockType';
 export * from './processDocumentInput';
 export * from './processDocumentResult';
 export * from './processFrame';
+export * from './processPageInput';
+export * from './processPageResult';
 export * from './reconstructedPage';
+export * from './usage';

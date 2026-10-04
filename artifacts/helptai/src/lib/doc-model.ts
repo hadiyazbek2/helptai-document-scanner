@@ -1,4 +1,4 @@
-import type { Box, PageBlock, ProcessDocumentResult } from '@helptai/api-client-react';
+import type { Box, PageBlock, ProcessDocumentResult, ReconstructedPage } from '@helptai/api-client-react';
 
 export type PageStatus = 'ok' | 'needs-review' | 'patched';
 
@@ -19,6 +19,8 @@ export type Page = {
   pageBox: Box | null;
   sourceFrameIndices: number[];
   bestFrameIndex: number;
+  // How many times this page has been replaced with a retake photo.
+  retakes: number;
 };
 
 export type Doc = {
@@ -59,6 +61,7 @@ export function buildDoc(
       pageBox: page.pageBox ?? null,
       sourceFrameIndices: page.sourceFrameIndices,
       bestFrameIndex,
+      retakes: 0,
     };
   });
   return {
@@ -68,4 +71,41 @@ export function buildDoc(
     discardedFrameCount: result.discardedFrameCount,
     processingNote: result.processingNote,
   };
+}
+
+// Replaces one page with the result of a retake photo. Everything about the page comes from the
+// new photo (image, text, layout, confidence). It counts as fixed ("patched") only when the new
+// read is good; otherwise it stays flagged, with the new reason, so the user can try again.
+export function applyPatch(
+  doc: Doc,
+  pageNumber: number,
+  result: ReconstructedPage,
+  image: { dataUrl: string; width: number; height: number },
+): Doc {
+  const pages = doc.pages.map((page): Page => {
+    if (page.pageNumber !== pageNumber) return page;
+    const blocks: PageBlock[] = result.blocks?.length
+      ? result.blocks
+      : result.text.trim()
+        ? [{ type: 'paragraph', text: result.text.trim(), box: null }]
+        : [];
+    const stillPoor = result.needsReview || !blocks.length;
+    return {
+      ...page,
+      // Keep the earlier title when the new read could not find one.
+      title: /^untitled page$/i.test(result.title.trim()) ? page.title : result.title,
+      text: result.text,
+      confidence: result.confidence,
+      status: stillPoor ? 'needs-review' : 'patched',
+      reviewReason: stillPoor ? result.reviewReason ?? 'The text is still a little hard to read in this photo.' : null,
+      image: image.dataUrl,
+      imageSize: { width: image.width, height: image.height },
+      blocks,
+      pageBox: result.pageBox ?? null,
+      sourceFrameIndices: [],
+      bestFrameIndex: 0,
+      retakes: page.retakes + 1,
+    };
+  });
+  return { ...doc, pages };
 }

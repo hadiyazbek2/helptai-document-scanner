@@ -1,21 +1,16 @@
 import { Router, type IRouter, type Response } from "express";
-import { ProcessDocumentBody, type ErrorResponseCode } from "@helptai/api-zod";
-import { ai } from "@helptai/integrations-gemini-ai";
-import { buildPrompt, parseModelResult, RESPONSE_SCHEMA } from "../lib/analysis";
-import {
-  AllModelsFailedError,
-  BlockedOutputError,
-  InvalidOutputError,
-  runWithModelFallback,
-} from "../lib/gemini-call";
+import { ProcessDocumentBody, ProcessPageBody, type ErrorResponseCode } from "@helptai/api-zod";
+import { clients } from "@helptai/integrations-gemini-ai";
+import { buildPagePrompt, buildPrompt, mainPage, RESPONSE_SCHEMA } from "../lib/analysis";
+import { AllModelsFailedError } from "../lib/gemini-call";
 import { getModelChain } from "../lib/gemini-config";
+import { analyzeWith, type GenerateFn } from "../lib/gemini-run";
 
 const router: IRouter = Router();
 
 const MAX_INLINE_FRAME_BYTES = 1_150_000;
 const SAFE_REQUESTS_PER_MINUTE = 12;
 const geminiRequestTimes: number[] = [];
-const BLOCKED_FINISH_REASONS = new Set(["RECITATION", "SAFETY", "PROHIBITED_CONTENT", "BLOCKLIST", "SPII"]);
 
 const MESSAGES: Record<ErrorResponseCode, string> = {
   bad_request: "The selected frames could not be read.",
@@ -40,6 +35,36 @@ function sendError(res: Response, code: ErrorResponseCode, message = MESSAGES[co
   res.status(STATUS[code]).json({ error: message, code });
 }
 
+// Builds the function that makes one real Gemini call for the given images and prompt.
+function makeGenerate(prompt: string, images: Array<{ mimeType: string; data: string }>): GenerateFn {
+  const contents = [
+    {
+      role: "user" as const,
+      parts: [{ text: prompt }, ...images.map((image) => ({ inlineData: image }))],
+    },
+  ];
+  return async ({ model, keyIndex }) => {
+    const response = await clients[keyIndex].models.generateContent({
+      model,
+      contents,
+      config: {
+        maxOutputTokens: 16384,
+        responseMimeType: "application/json",
+        responseSchema: RESPONSE_SCHEMA,
+      },
+    });
+    return {
+      text: response.text ?? "",
+      finishReason: response.candidates?.[0]?.finishReason ? String(response.candidates[0].finishReason) : undefined,
+      usage: {
+        inputTokens: response.usageMetadata?.promptTokenCount,
+        outputTokens: response.usageMetadata?.candidatesTokenCount,
+        thinkingTokens: response.usageMetadata?.thoughtsTokenCount,
+      },
+    };
+  };
+}
+
 router.post("/process-document", async (req, res) => {
   const parsed = ProcessDocumentBody.safeParse(req.body);
   if (!parsed.success) {
@@ -58,46 +83,13 @@ router.post("/process-document", async (req, res) => {
     return;
   }
 
-  const contents = [
-    {
-      role: "user" as const,
-      parts: [
-        { text: buildPrompt(documentName, frames) },
-        ...inlineFrames.flatMap((frame) =>
-          frame ? [{ inlineData: { mimeType: frame.mimeType, data: frame.data } }] : [],
-        ),
-      ],
-    },
-  ];
-
   try {
-    const { result: pages, model } = await runWithModelFallback(
-      getModelChain(),
-      async (model) => {
-        const response = await ai.models.generateContent({
-          model,
-          contents,
-          config: {
-            maxOutputTokens: 16384,
-            responseMimeType: "application/json",
-            responseSchema: RESPONSE_SCHEMA,
-          },
-        });
-        const finishReason = response.candidates?.[0]?.finishReason;
-        if (finishReason === "MAX_TOKENS") throw new InvalidOutputError("Model output was cut off");
-        if (finishReason && BLOCKED_FINISH_REASONS.has(String(finishReason))) {
-          throw new BlockedOutputError(String(finishReason));
-        }
-        return parseModelResult(response.text ?? "", frames);
-      },
-      {
-        onEvent: ({ model, kind, attempt, error }) =>
-          req.log.warn(
-            { model, kind, attempt, reason: error instanceof Error ? error.message.slice(0, 200) : String(error) },
-            "Gemini attempt failed",
-          ),
-      },
+    const { pages, model, usage } = await analyzeWith(
+      makeGenerate(buildPrompt(documentName, frames), inlineFrames.flatMap((frame) => (frame ? [frame] : []))),
+      frames,
+      { models: getModelChain(), keyCount: clients.length, onEvent: logAttempt(req) },
     );
+    req.log.info({ usage }, "Document analyzed");
 
     const used = new Set(pages.flatMap((page) => page.sourceFrameIndices));
     res.json({
@@ -107,12 +99,49 @@ router.post("/process-document", async (req, res) => {
       discardedFrameCount: frames.length - used.size,
       processingNote:
         "Frames were filtered locally before Gemini checked their order, text, and confidence.",
+      usage,
     });
   } catch (error) {
     req.log.error({ err: error }, "Document analysis failed");
     sendError(res, errorCode(error));
   }
 });
+
+// Rebuilds a single page from one retake photo, so it can replace a page that was hard to read.
+router.post("/process-page", async (req, res) => {
+  const parsed = ProcessPageBody.safeParse(req.body);
+  const image = parsed.success ? parseDataUrl(parsed.data.dataUrl) : null;
+  if (!parsed.success || !image || image.data.length > MAX_INLINE_FRAME_BYTES) {
+    sendError(res, "bad_request", "That photo could not be read. Please try another one.");
+    return;
+  }
+  if (!reserveGeminiRequest()) {
+    sendError(res, "quota");
+    return;
+  }
+
+  const { documentName, pageNumber } = parsed.data;
+  try {
+    const { pages, model, usage } = await analyzeWith(
+      makeGenerate(buildPagePrompt(documentName, pageNumber), [image]),
+      [{ timestamp: 0, sharpness: 1, difference: 0 }],
+      { models: getModelChain(), keyCount: clients.length, onEvent: logAttempt(req) },
+    );
+    req.log.info({ usage, pageNumber }, "Page rebuilt");
+    res.json({ page: { ...mainPage(pages), pageNumber, modelUsed: model }, usage });
+  } catch (error) {
+    req.log.error({ err: error }, "Page analysis failed");
+    sendError(res, errorCode(error));
+  }
+});
+
+function logAttempt(req: { log: { warn: (o: object, m: string) => void } }) {
+  return ({ model, kind, attempt, error }: { model: string; kind: string; attempt: number; error: unknown }) =>
+    req.log.warn(
+      { model, kind, attempt, reason: error instanceof Error ? error.message.slice(0, 200) : String(error) },
+      "Gemini attempt failed",
+    );
+}
 
 function errorCode(error: unknown): ErrorResponseCode {
   if (!(error instanceof AllModelsFailedError)) return "unavailable";

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildDoc } from './doc-model';
+import { applyPatch, buildDoc } from './doc-model';
 
 const frame = (dataUrl: string) => ({ dataUrl, width: 400, height: 600 });
 const frames = [frame('f0'), frame('f1'), frame('f2'), frame('f3')];
@@ -53,5 +53,46 @@ describe('buildDoc', () => {
   it('falls back to the plain text as one paragraph when there are no blocks', () => {
     const doc = buildDoc('d', result([apiPage({ text: '  hello there ' })]), frames);
     expect(doc.pages[0].blocks).toEqual([{ type: 'paragraph', text: 'hello there', box: null }]);
+  });
+});
+
+describe('applyPatch', () => {
+  const base = () => buildDoc('d', result([
+    apiPage({ pageNumber: 1, title: 'One', text: 'old one', bestFrameIndex: 0 }),
+    apiPage({ pageNumber: 2, title: 'Two', text: 'old two', needsReview: true, reviewReason: 'Hand', bestFrameIndex: 1, sourceFrameIndices: [1] }),
+  ]), frames);
+  const photo = { dataUrl: 'retake', width: 700, height: 900 };
+  const retaken = (extra = {}) => ({ ...apiPage(), pageNumber: 9, title: 'New title', text: 'new two', ...extra });
+
+  it('replaces only the chosen page, using the new photo, text and layout', () => {
+    const blocks = [{ type: 'paragraph' as const, text: 'new two', box: [0, 0, 100, 100] as [number, number, number, number] }];
+    const doc = applyPatch(base(), 2, retaken({ blocks, pageBox: [5, 5, 995, 995] }), photo);
+    expect(doc.pages[0]).toMatchObject({ text: 'old one', image: 'f0', retakes: 0 });
+    expect(doc.pages[1]).toMatchObject({
+      pageNumber: 2, text: 'new two', image: 'retake', imageSize: { width: 700, height: 900 },
+      blocks, pageBox: [5, 5, 995, 995], retakes: 1, sourceFrameIndices: [], bestFrameIndex: 0,
+    });
+  });
+
+  it('marks a good retake as patched and clears the review reason', () => {
+    const doc = applyPatch(base(), 2, retaken({ blocks: [{ type: 'paragraph', text: 'x', box: null }] }), photo);
+    expect(doc.pages[1]).toMatchObject({ status: 'patched', reviewReason: null });
+  });
+
+  it('keeps the page flagged, with the new reason, when the retake is still poor', () => {
+    const doc = applyPatch(base(), 2, retaken({ needsReview: true, reviewReason: 'Still blurry.' }), photo);
+    expect(doc.pages[1]).toMatchObject({ status: 'needs-review', reviewReason: 'Still blurry.', retakes: 1 });
+  });
+
+  it('keeps the old title when the retake has none, and counts repeated retakes', () => {
+    let doc = applyPatch(base(), 2, retaken({ title: 'Untitled page' }), photo);
+    expect(doc.pages[1].title).toBe('Two');
+    doc = applyPatch(doc, 2, retaken(), photo);
+    expect(doc.pages[1].retakes).toBe(2);
+  });
+
+  it('leaves the document unchanged for an unknown page number', () => {
+    const before = base();
+    expect(applyPatch(before, 7, retaken(), photo).pages).toEqual(before.pages);
   });
 });

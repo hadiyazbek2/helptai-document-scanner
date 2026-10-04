@@ -128,11 +128,39 @@ export interface ReconstructedPage {
   modelUsed?: string;
 }
 
+/**
+ * What this request used, for working out running costs.
+ */
+export interface Usage {
+  model: string;
+  inputTokens: number;
+  outputTokens: number;
+  thinkingTokens: number;
+}
+
+export interface ProcessPageInput {
+  /**
+     * @minLength 1
+     * @maxLength 160
+     */
+  documentName: string;
+  /** @minimum 1 */
+  pageNumber: number;
+  /** @minLength 32 */
+  dataUrl: string;
+}
+
+export interface ProcessPageResult {
+  page: ReconstructedPage;
+  usage?: Usage;
+}
+
 export interface ProcessDocumentResult {
   documentName: string;
   pages: ReconstructedPage[];
   selectedFrameCount: number;
   discardedFrameCount: number;
   processingNote: string;
+  usage?: Usage;
 }
 

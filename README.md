@@ -24,7 +24,8 @@ npm run dev               # web on :5173, API on :8080 (web proxies /api)
 
 | Variable | Purpose |
 |---|---|
-| `GEMINI_API_KEY` | Required. Google AI Studio key. |
+| `GEMINI_API_KEY` | Required (or use `GEMINI_API_KEYS`). Google AI Studio key. |
+| `GEMINI_API_KEYS` | Optional. Comma-separated keys; the server moves to the next key when one is out of quota. |
 | `GEMINI_MODELS` | Optional. Comma-separated models tried in order; a busy or out-of-quota model falls through to the next (default `gemini-3.6-flash,gemini-3.8-flash,gemini-3.5-flash`). |
 | `PORT` | Optional. API port (default 8080). |
 | `API_PORT` | Optional. Port the web dev server proxies `/api` to (default 8080). |

@@ -63,6 +63,20 @@ export const RESPONSE_SCHEMA = {
   required: ["pages"],
 };
 
+// What to return for each page; shared by the whole-document and single-page prompts.
+const PAGE_FIELDS = `- title: a short descriptive title, or "Untitled page"
+- confidence: 0 to 1, based on readability and completeness
+- needsReview: true when text is materially hard to read, the page is incomplete (for example a hand or a page turn covers text), or the sequence has a gap
+- reviewReason: a calm, plain-language explanation when needsReview is true, otherwise null
+- sourceFrames: the frame numbers (as labelled above, starting at 1) that show this page
+- bestFrame: one of sourceFrames, the frame where this page is clearest and most fully visible, with no fingers or motion blur over the text
+- pageBox: where the paper page is inside the bestFrame image, as [ymin, xmin, ymax, xmax], integers from 0 to 1000 (fractions of the image height and width, times 1000)
+- blocks: the page's content in reading order, rebuilt so it keeps the page's own layout. Each block has:
+  - type: "heading" (with level 1 to 3, 1 being the largest), "paragraph" (join wrapped lines into one flowing paragraph), "list" (each bullet or numbered item as an entry in items, without its bullet or number), "table" (rows, each a list of cell texts), "lines" (text whose line breaks matter, such as handwriting, code, formulas, poems; keep each line of the page on its own line using newlines in text), "caption" (text under a figure), "figure" (a picture or diagram: leave text empty, do not describe it), "header" or "footer" (running heads, page numbers, dates)
+  - text: the block's text (for lists and tables, leave text empty and fill items or rows)
+  - box: where the block is in the bestFrame image, as [ymin, xmin, ymax, xmax], integers from 0 to 1000, drawn tightly around the block (around the picture for figures)
+  Keep the original wording and order. Include every readable piece of text on the page, including margin notes and labels.`;
+
 export function buildPrompt(documentName: string, frames: FrameInfo[]) {
   const frameNotes = frames
     .map(
@@ -78,20 +92,25 @@ Document name: ${documentName}
 ${frameNotes}
 
 Inspect the images in sequence. Several frames often show the same page, and a frame can show parts of two pages while a page is being turned. Group the frames into logical pages in reading order. Do not invent content. For each page return:
-- title: a short descriptive title, or "Untitled page"
-- confidence: 0 to 1, based on readability and completeness
-- needsReview: true when text is materially hard to read, the page is incomplete (for example a hand or a page turn covers text), or the sequence has a gap
-- reviewReason: a calm, plain-language explanation when needsReview is true, otherwise null
-- sourceFrames: the frame numbers (as labelled above, starting at 1) that show this page
-- bestFrame: one of sourceFrames, the frame where this page is clearest and most fully visible, with no fingers or motion blur over the text
-- pageBox: where the paper page is inside the bestFrame image, as [ymin, xmin, ymax, xmax], integers from 0 to 1000 (fractions of the image height and width, times 1000)
-- blocks: the page's content in reading order, rebuilt so it keeps the page's own layout. Each block has:
-  - type: "heading" (with level 1 to 3, 1 being the largest), "paragraph" (join wrapped lines into one flowing paragraph), "list" (each bullet or numbered item as an entry in items, without its bullet or number), "table" (rows, each a list of cell texts), "lines" (text whose line breaks matter, such as handwriting, code, formulas, poems; keep each line of the page on its own line using newlines in text), "caption" (text under a figure), "figure" (a picture or diagram: leave text empty, do not describe it), "header" or "footer" (running heads, page numbers, dates)
-  - text: the block's text (for lists and tables, leave text empty and fill items or rows)
-  - box: where the block is in the bestFrame image, as [ymin, xmin, ymax, xmax], integers from 0 to 1000, drawn tightly around the block (around the picture for figures)
-  Keep the original wording and order. Include every readable piece of text on the page, including margin notes and labels.
+${PAGE_FIELDS}
 
 Frames that only show a page turn, a hand, or the table, with no readable page, belong to no page. Keep the page list concise: if several frames show the same page, merge them into one page.`;
+}
+
+// Prompt for rebuilding one page from a single retake photo.
+export function buildPagePrompt(documentName: string, pageNumber: number) {
+  return `You are rebuilding ONE page of a document for helptai. The user took a fresh, close photo of page ${pageNumber} of "${documentName}" because the first capture of it was hard to read. The image is Frame 1.
+
+Return exactly one page, built only from this photo. If the photo shows parts of a neighbouring page, ignore them and rebuild only the page that fills most of the photo. Do not invent content. If the photo is still hard to read, say so honestly with needsReview and a calm reviewReason.
+
+For the page return:
+${PAGE_FIELDS.replace("- sourceFrames: the frame numbers (as labelled above, starting at 1) that show this page", "- sourceFrames: [1]").replace("- bestFrame: one of sourceFrames, the frame where this page is clearest and most fully visible, with no fingers or motion blur over the text", "- bestFrame: 1")}`;
+}
+
+// A retake photo should give one page; if the model returns several (a photo of a spread),
+// keep the one with the most text.
+export function mainPage(pages: AnalyzedPage[]): AnalyzedPage {
+  return pages.reduce((best, page) => (page.text.length > best.text.length ? page : best));
 }
 
 export function parseModelResult(text: string, frames: FrameInfo[]): AnalyzedPage[] {

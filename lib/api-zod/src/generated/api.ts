@@ -94,7 +94,85 @@ export const ProcessDocumentResponse = zod.object({
 })),
   "selectedFrameCount": zod.number().int(),
   "discardedFrameCount": zod.number().int(),
-  "processingNote": zod.string()
+  "processingNote": zod.string(),
+  "usage": zod.object({
+  "model": zod.string(),
+  "inputTokens": zod.number().int(),
+  "outputTokens": zod.number().int(),
+  "thinkingTokens": zod.number().int()
+}).optional().describe('What this request used, for working out running costs.')
+})
+
+
+/**
+ * Sends one fresh photo of a single page to Gemini and returns that page rebuilt, so it can replace a page that was hard to read.
+ * @summary Rebuild one page from a retake photo
+ */
+export const processPageBodyDocumentNameMax = 160;
+
+
+export const processPageBodyDataUrlMin = 32;
+
+
+
+export const ProcessPageBody = zod.object({
+  "documentName": zod.string().min(1).max(processPageBodyDocumentNameMax),
+  "pageNumber": zod.number().int().min(1),
+  "dataUrl": zod.string().min(processPageBodyDataUrlMin)
+})
+
+
+export const processPageResponsePageConfidenceMin = 0;
+export const processPageResponsePageConfidenceMax = 1;
+
+export const processPageResponsePageSourceFrameIndicesItemMin = 0;
+
+
+export const processPageResponsePageBestFrameIndexMin = 0;
+
+export const processPageResponsePagePageBoxOneItemMin = 0;
+export const processPageResponsePagePageBoxOneItemMax = 1000;
+
+export const processPageResponsePagePageBoxOneMin = 4;
+export const processPageResponsePagePageBoxOneMax = 4;
+
+export const processPageResponsePageBlocksItemLevelMax = 3;
+
+export const processPageResponsePageBlocksItemBoxOneItemMin = 0;
+export const processPageResponsePageBlocksItemBoxOneItemMax = 1000;
+
+export const processPageResponsePageBlocksItemBoxOneMin = 4;
+export const processPageResponsePageBlocksItemBoxOneMax = 4;
+
+
+
+export const ProcessPageResponse = zod.object({
+  "page": zod.object({
+  "pageNumber": zod.number().int().min(1),
+  "title": zod.string(),
+  "text": zod.string(),
+  "confidence": zod.number().min(processPageResponsePageConfidenceMin).max(processPageResponsePageConfidenceMax),
+  "needsReview": zod.boolean(),
+  "reviewReason": zod.string().nullable(),
+  "sourceFrameIndices": zod.array(zod.number().int().min(processPageResponsePageSourceFrameIndicesItemMin)).min(1).describe('Zero-based indices (into the request frames) of every frame that shows this page.'),
+  "bestFrameIndex": zod.number().int().min(processPageResponsePageBestFrameIndexMin).describe('Zero-based index of the frame that shows this page most clearly. Always one of sourceFrameIndices.'),
+  "pageBox": zod.union([zod.array(zod.number().int().min(processPageResponsePagePageBoxOneItemMin).max(processPageResponsePagePageBoxOneItemMax)).min(processPageResponsePagePageBoxOneMin).max(processPageResponsePagePageBoxOneMax).describe('Region of an image as [ymin, xmin, ymax, xmax], each 0-1000 (fractions of the image height/width times 1000).'),zod.null()]).describe('Where the paper page is inside the best frame, or null if unknown.'),
+  "blocks": zod.array(zod.object({
+  "type": zod.enum(['heading', 'paragraph', 'list', 'table', 'lines', 'caption', 'figure', 'header', 'footer']),
+  "level": zod.number().int().min(1).max(processPageResponsePageBlocksItemLevelMax).optional().describe('Heading level (1 is the largest). Only for headings.'),
+  "text": zod.string().describe('Text of the block. For type "lines" each line of the page is on its own line.'),
+  "items": zod.array(zod.string()).optional().describe('List items without their bullet or number. Only for lists.'),
+  "rows": zod.array(zod.array(zod.string())).optional().describe('Table rows, each a list of cell texts. Only for tables.'),
+  "box": zod.union([zod.array(zod.number().int().min(processPageResponsePageBlocksItemBoxOneItemMin).max(processPageResponsePageBlocksItemBoxOneItemMax)).min(processPageResponsePageBlocksItemBoxOneMin).max(processPageResponsePageBlocksItemBoxOneMax).describe('Region of an image as [ymin, xmin, ymax, xmax], each 0-1000 (fractions of the image height/width times 1000).'),zod.null()]).describe('Where the block is in the best frame, or null if unknown.')
+}).describe('One piece of a page in reading order, so the page\'s structure can be rebuilt.')).describe('The page\'s content in reading order. The same text as `text`, with structure and position.'),
+  "modelUsed": zod.string().optional().describe('Gemini model that produced this page.')
+}),
+  "usage": zod.object({
+  "model": zod.string(),
+  "inputTokens": zod.number().int(),
+  "outputTokens": zod.number().int(),
+  "thinkingTokens": zod.number().int()
+}).optional().describe('What this request used, for working out running costs.')
 })
 
 

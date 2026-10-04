@@ -19,9 +19,10 @@ import {
   X,
 } from 'lucide-react';
 import { downloadDocx, downloadPdf, downloadPptx } from '@/lib/export';
-import type { ProcessDocumentResult } from '@helptai/api-client-react';
+import type { ProcessDocumentResult, ProcessPageResult } from '@helptai/api-client-react';
 import { PageReplica } from '@/components/page-replica';
-import { buildDoc, type Doc, type Page } from '@/lib/doc-model';
+import { applyPatch, buildDoc, type Doc, type Page } from '@/lib/doc-model';
+import { prepareImage } from '@/lib/image';
 import { selectVideoFrames, type SelectedFrame } from '@/lib/video-processing';
 
 type View = 'home' | 'frames' | 'processing' | 'review' | 'patch';
@@ -244,7 +245,7 @@ function DocumentSheet({ page }: { page: Page | null }) {
   return (
     <div className="document-sheet" data-testid="preview-document-sheet">
       <div className="sheet-content">
-        <div className="sheet-topline"><span>reconstructed page</span><span>page {String(page?.pageNumber ?? 1).padStart(2, '0')}</span></div>
+        <div className="sheet-topline"><span>reconstructed page</span><span>page {String(page?.pageNumber ?? 1).padStart(2, '0')}{page?.retakes ? ' · retaken' : ''}</span></div>
         {page ? (
           <div className="page-compare">
             <div className="compare-pane">
@@ -297,7 +298,6 @@ function ExportPanel({ onExport }: { onExport: (format: string) => void }) {
 function ReviewView({
   documentName,
   analysis,
-  patchDone,
   selectedPageNumber,
   onSelectPage,
   onPatch,
@@ -305,14 +305,15 @@ function ReviewView({
 }: {
   documentName: string;
   analysis: Doc;
-  patchDone: boolean;
   selectedPageNumber: number;
   onSelectPage: (pageNumber: number) => void;
-  onPatch: () => void;
+  onPatch: (pageNumber: number) => void;
   onExport: (format: string) => void;
 }) {
   const selectedPage = analysis.pages.find((page) => page.pageNumber === selectedPageNumber) ?? analysis.pages[0] ?? null;
-  const flaggedPage = analysis.pages.find((page) => page.status === 'needs-review') ?? null;
+  const flagged = analysis.pages.filter((page) => page.status === 'needs-review');
+  const retaken = analysis.pages.filter((page) => page.retakes > 0 && page.status !== 'needs-review');
+  const pad = (n: number) => String(n).padStart(2, '0');
   return (
     <main className="review-page" data-testid="view-review">
       <div className="review-header">
@@ -328,37 +329,55 @@ function ReviewView({
           <div className="thumb-strip" aria-label="Document pages">
             {analysis.pages.map((page) => (
               <button
-                className={`thumb${page.pageNumber === selectedPage?.pageNumber ? ' current' : ''}${page.status === 'needs-review' ? ' thumb-flagged' : ''}`}
+                className={`thumb${page.pageNumber === selectedPage?.pageNumber ? ' current' : ''}${page.status === 'needs-review' ? ' thumb-flagged' : ''}${page.status === 'patched' ? ' thumb-patched' : ''}`}
                 key={page.pageNumber}
                 onClick={() => onSelectPage(page.pageNumber)}
                 data-testid={`thumbnail-page-${page.pageNumber}`}
-                aria-label={`Open page ${page.pageNumber}${page.status === 'needs-review' ? ', needs review' : ''}`}
+                aria-label={`Open page ${page.pageNumber}${page.status === 'needs-review' ? ', needs review' : page.status === 'patched' ? ', retaken' : ''}`}
               >
-                <span>{String(page.pageNumber).padStart(2, '0')}</span>
+                <span>{pad(page.pageNumber)}</span>
               </button>
             ))}
           </div>
           <DocumentSheet page={selectedPage} />
+          {selectedPage && (
+            <button className="button button-quiet retake-selected" onClick={() => onPatch(selectedPage.pageNumber)} data-testid="button-retake-selected">
+              <ImagePlus size={15} />
+              retake page {pad(selectedPage.pageNumber)} with a new photo
+            </button>
+          )}
         </div>
         <aside className="review-sidebar">
           <div className="flag-card" data-testid="card-flagged-page">
-            <div className="flag-top"><span className={`flag-dot${flaggedPage ? '' : ' flag-dot-clear'}`} /> {flaggedPage ? 'one page worth a closer look' : 'the capture looks complete'}</div>
-            <h2>{patchDone ? `Page ${String(flaggedPage?.pageNumber ?? 1).padStart(2, '0')} looks good.` : flaggedPage ? `Check page ${String(flaggedPage.pageNumber).padStart(2, '0')}` : 'No gaps found.'}</h2>
-            <p>
-              {patchDone
-                ? 'Your new photo is in place. The page has been refreshed in the document.'
-                : flaggedPage
-                  ? flaggedPage.reviewReason ?? 'The text was a little hard to read from the scroll.'
-                  : 'Each selected frame was readable enough to include in the reconstructed document.'}
-            </p>
-            {!patchDone && flaggedPage && (
-              <button className="button button-primary" onClick={onPatch} data-testid="button-patch-page">
-                <ImagePlus size={16} />
-                add a patch photo
-                <ArrowRight size={15} />
-              </button>
+            <div className="flag-top">
+              <span className={`flag-dot${flagged.length ? '' : ' flag-dot-clear'}`} />
+              {flagged.length === 0 ? 'the capture looks complete' : flagged.length === 1 ? 'one page worth a closer look' : `${flagged.length} pages worth a closer look`}
+            </div>
+            {flagged.length > 0 ? (
+              <ul className="flag-list">
+                {flagged.map((page) => (
+                  <li key={page.pageNumber} data-testid={`flagged-page-${page.pageNumber}`}>
+                    <button className="flag-title" onClick={() => onSelectPage(page.pageNumber)}>Check page {pad(page.pageNumber)}</button>
+                    <p>{page.reviewReason ?? 'The text was a little hard to read from the scroll.'}</p>
+                    <button className="button button-primary" onClick={() => onPatch(page.pageNumber)} data-testid={`button-patch-page-${page.pageNumber}`}>
+                      <ImagePlus size={16} />
+                      {page.retakes ? 'try another photo' : 'retake this page'}
+                      <ArrowRight size={15} />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <>
+                <h2>{retaken.length ? 'All pages look good.' : 'No gaps found.'}</h2>
+                <p>
+                  {retaken.length
+                    ? `Your new photo${retaken.length > 1 ? 's are' : ' is'} in place for page ${retaken.map((page) => pad(page.pageNumber)).join(', ')}.`
+                    : 'Each selected frame was readable enough to include in the reconstructed document.'}
+                </p>
+              </>
             )}
-            {patchDone && <div className="status-done" data-testid="status-patch-complete"><Check size={14} /> patch added</div>}
+            {retaken.length > 0 && <div className="status-done" data-testid="status-patch-complete"><Check size={14} /> retake added</div>}
           </div>
           <ExportPanel onExport={onExport} />
         </aside>
@@ -369,95 +388,105 @@ function ReviewView({
 
 function PatchView({
   pageNumber,
+  busy,
+  error,
   onBack,
-  onPatchComplete,
-  patchImage,
-  onPatchImage,
+  onSubmit,
 }: {
   pageNumber: number;
+  busy: boolean;
+  error: string | null;
   onBack: () => void;
-  onPatchComplete: () => void;
-  patchImage: string | null;
-  onPatchImage: (image: string) => void;
+  onSubmit: (photo: Blob | string) => void;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [patchCameraOpen, setPatchCameraOpen] = useState(false);
-  const [patchStream, setPatchStream] = useState<MediaStream | null>(null);
-  const [patchError, setPatchError] = useState(false);
+  const [preview, setPreview] = useState<{ url: string; source: Blob | string } | null>(null);
+  const [cameraOpen, setCameraOpen] = useState(false);
+  const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
+  const [cameraError, setCameraError] = useState(false);
+  const label = String(pageNumber).padStart(2, '0');
 
   useEffect(() => {
-    if (videoRef.current && patchStream) videoRef.current.srcObject = patchStream;
-  }, [patchStream]);
+    if (videoRef.current && cameraStream) videoRef.current.srcObject = cameraStream;
+  }, [cameraStream]);
 
-  useEffect(() => () => patchStream?.getTracks().forEach((track) => track.stop()), [patchStream]);
+  useEffect(() => () => cameraStream?.getTracks().forEach((track) => track.stop()), [cameraStream]);
 
-  const usePatchFile = (file: File) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      if (typeof reader.result === 'string') onPatchImage(reader.result);
-    };
-    reader.readAsDataURL(file);
+  // Release the preview's object URL when it is replaced or the screen closes.
+  useEffect(() => () => {
+    if (preview?.url.startsWith('blob:')) URL.revokeObjectURL(preview.url);
+  }, [preview]);
+
+  const closeCamera = () => {
+    cameraStream?.getTracks().forEach((track) => track.stop());
+    setCameraStream(null);
+    setCameraOpen(false);
   };
 
-  const startPatchCamera = async () => {
-    setPatchError(false);
+  const startCamera = async () => {
+    setCameraError(false);
     if (!navigator.mediaDevices?.getUserMedia) {
-      setPatchError(true);
+      setCameraError(true);
       return;
     }
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false });
-      setPatchStream(stream);
-      setPatchCameraOpen(true);
+      setCameraStream(stream);
+      setCameraOpen(true);
     } catch {
-      setPatchError(true);
+      setCameraError(true);
     }
   };
 
-  const capturePatch = () => {
+  const capture = () => {
     const video = videoRef.current;
     const canvas = canvasRef.current;
     if (video && canvas && video.videoWidth) {
       canvas.width = video.videoWidth;
       canvas.height = video.videoHeight;
       canvas.getContext('2d')?.drawImage(video, 0, 0);
-      onPatchImage(canvas.toDataURL('image/jpeg', .86));
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
+      setPreview({ url: dataUrl, source: dataUrl });
     }
-    patchStream?.getTracks().forEach((track) => track.stop());
-    setPatchStream(null);
-    setPatchCameraOpen(false);
+    closeCamera();
   };
 
   return (
     <main className="patch-page" data-testid="view-patch">
-      <button className="back-button" onClick={onBack} data-testid="button-back-review"><ArrowLeft size={14} /> back to document</button>
+      <button className="back-button" onClick={onBack} disabled={busy} data-testid="button-back-review"><ArrowLeft size={14} /> back to document</button>
       <div className="patch-header">
         <span className="eyebrow">a small second look</span>
-        <h1>Let’s make page {String(pageNumber).padStart(2, '0')} clearer.</h1>
-        <p>Place the page flat in good light, then take a quick photo. This replaces only the flagged page — the rest of your document stays in place.</p>
+        <h1>Let’s make page {label} clearer.</h1>
+        <p>Place the page flat in good light, then take a quick photo. This replaces only page {label} — the rest of your document stays in place.</p>
       </div>
       <div className="patch-preview" data-testid="preview-patch-photo">
-        {patchCameraOpen ? (
+        {cameraOpen ? (
           <video ref={videoRef} autoPlay muted playsInline aria-label="Camera preview" data-testid="video-patch-camera" />
-          ) : patchImage ? (
-          <img src={patchImage} alt={`Your replacement photo for page ${pageNumber}`} data-testid="img-patch-photo" />
+        ) : preview ? (
+          <img src={preview.url} alt={`Your replacement photo for page ${pageNumber}`} data-testid="img-patch-photo" />
         ) : (
           <div className="preview-placeholder"><BookOpen size={30} /><span>your page will appear here</span></div>
+        )}
+        {busy && (
+          <div className="patch-busy" role="status" data-testid="status-patch-busy">
+            <LoaderCircle size={22} />
+            <span>rebuilding page {label}…</span>
+          </div>
         )}
       </div>
       <canvas ref={canvasRef} className="hidden-input" />
       <div className="patch-controls">
-        {patchCameraOpen ? (
+        {cameraOpen ? (
           <>
-            <button className="button button-primary" onClick={capturePatch} data-testid="button-capture-patch"><CircleStop size={16} /> use this photo</button>
-            <button className="button button-quiet" onClick={() => { patchStream?.getTracks().forEach((track) => track.stop()); setPatchStream(null); setPatchCameraOpen(false); }} data-testid="button-cancel-patch-camera"><X size={16} /> cancel camera</button>
+            <button className="button button-primary" onClick={capture} data-testid="button-capture-patch"><CircleStop size={16} /> use this photo</button>
+            <button className="button button-quiet" onClick={closeCamera} data-testid="button-cancel-patch-camera"><X size={16} /> cancel camera</button>
           </>
         ) : (
           <>
-            <button className="button button-primary" onClick={startPatchCamera} data-testid="button-open-patch-camera"><Video size={16} /> take a photo</button>
-            <button className="button button-outline" onClick={() => inputRef.current?.click()} data-testid="button-upload-patch"><Upload size={16} /> choose from photos</button>
+            <button className="button button-primary" onClick={startCamera} disabled={busy} data-testid="button-open-patch-camera"><Video size={16} /> take a photo</button>
+            <button className="button button-outline" onClick={() => inputRef.current?.click()} disabled={busy} data-testid="button-upload-patch"><Upload size={16} /> choose from photos</button>
             <input
               ref={inputRef}
               className="hidden-input"
@@ -466,7 +495,7 @@ function PatchView({
               capture="environment"
               onChange={(event) => {
                 const file = event.target.files?.[0];
-                if (file) usePatchFile(file);
+                if (file) setPreview({ url: URL.createObjectURL(file), source: file });
                 event.target.value = '';
               }}
               data-testid="input-patch-file"
@@ -474,13 +503,14 @@ function PatchView({
           </>
         )}
       </div>
-      {patchImage && !patchCameraOpen && (
-        <button className="button button-primary" style={{ width: '100%', marginTop: '.65rem' }} onClick={onPatchComplete} data-testid="button-apply-patch">
-          <Check size={16} /> add this page to the document
+      {preview && !cameraOpen && (
+        <button className="button button-primary" style={{ width: '100%', marginTop: '.65rem' }} onClick={() => onSubmit(preview.source)} disabled={busy} data-testid="button-apply-patch">
+          <Check size={16} /> {error ? 'try this photo again' : `use this photo for page ${label}`}
         </button>
       )}
-      {patchError && <p className="patch-help" data-testid="text-patch-camera-help">Camera access is not available here. You can choose a photo from your device instead.</p>}
-      {!patchError && <p className="patch-help">Nothing is uploaded until you choose to add the photo.</p>}
+      {error && <p className="patch-help patch-error" role="alert" data-testid="text-patch-error">{error}</p>}
+      {cameraError && <p className="patch-help" data-testid="text-patch-camera-help">Camera access is not available here. You can choose a photo from your device instead.</p>}
+      {!error && !cameraError && <p className="patch-help">The photo is sent to Gemini only when you tap “use this photo”.</p>}
     </main>
   );
 }
@@ -529,8 +559,9 @@ function App() {
   const [processingStatus, setProcessingStatus] = useState('Preparing your capture…');
   const [processingError, setProcessingError] = useState<string | null>(null);
   const [lastCapture, setLastCapture] = useState<File | null>(null);
-  const [patchDone, setPatchDone] = useState(false);
-  const [patchImage, setPatchImage] = useState<string | null>(null);
+  const [patchTarget, setPatchTarget] = useState<number | null>(null);
+  const [patchBusy, setPatchBusy] = useState(false);
+  const [patchError, setPatchError] = useState<string | null>(null);
   const [cameraOpen, setCameraOpen] = useState(false);
   const [recording, setRecording] = useState(false);
   const [stream, setStream] = useState<MediaStream | null>(null);
@@ -557,8 +588,8 @@ function App() {
     const cleanName = name.replace(/\.[^/.]+$/, '') || 'Untitled document';
     setLastCapture(file);
     setDocumentName(cleanName);
-    setPatchDone(false);
-    setPatchImage(null);
+    setPatchTarget(null);
+    setPatchError(null);
     setAnalysis(null);
     setSelectedFrames([]);
     setSelectedPageNumber(1);
@@ -616,7 +647,7 @@ function App() {
       return;
     }
     try {
-      const nextStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: true });
+      const nextStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false });
       setStream(nextStream);
       setCameraOpen(true);
     } catch {
@@ -671,8 +702,9 @@ function App() {
     setProcessingError(null);
     setProcessingStatus('Preparing your capture…');
     setSelectedPageNumber(1);
-    setPatchImage(null);
-    setPatchDone(false);
+    setPatchTarget(null);
+    setPatchBusy(false);
+    setPatchError(null);
   };
 
   const handleExport = (format: string) => {
@@ -687,16 +719,45 @@ function App() {
     }
   };
 
-  const finishPatch = () => {
-    setPatchDone(true);
-    setView('review');
-    setToast({ message: `Page ${String(selectedPageNumber).padStart(2, '0')} has been refreshed.`, tone: 'sage' });
+  const openPatch = (pageNumber: number) => {
+    setSelectedPageNumber(pageNumber);
+    setPatchTarget(pageNumber);
+    setPatchError(null);
+    setView('patch');
   };
 
-  const flaggedPage = analysis?.pages.find((page) => page.status === 'needs-review') ?? null;
-  const openPatch = () => {
-    if (flaggedPage) setSelectedPageNumber(flaggedPage.pageNumber);
-    setView('patch');
+  // Sends one retake photo to be rebuilt and swaps the result in for that page.
+  const submitPatch = async (photo: Blob | string) => {
+    if (!analysis || patchTarget === null) return;
+    const pageNumber = patchTarget;
+    setPatchBusy(true);
+    setPatchError(null);
+    try {
+      const image = await prepareImage(photo);
+      const response = await fetch('/api/process-page', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ documentName, pageNumber, dataUrl: image.dataUrl }),
+      });
+      const payload = await response.json().catch(() => null) as (Partial<ProcessPageResult> & { error?: string }) | null;
+      if (!response.ok) throw new Error(payload?.error || 'That photo could not be analyzed. Please try again.');
+      if (!payload?.page) throw new Error('No page was returned for that photo. Please try again.');
+
+      const next = applyPatch(analysis, pageNumber, payload.page, image);
+      const page = next.pages.find((candidate) => candidate.pageNumber === pageNumber);
+      setAnalysis(next);
+      setSelectedPageNumber(pageNumber);
+      setPatchTarget(null);
+      setView('review');
+      const label = String(pageNumber).padStart(2, '0');
+      setToast(page?.status === 'patched'
+        ? { message: `Page ${label} has been refreshed.`, tone: 'sage' }
+        : { message: `Page ${label} is updated, but is still a little hard to read. You can try another photo.`, tone: 'amber' });
+    } catch (error) {
+      setPatchError(error instanceof Error ? error.message : 'That photo could not be analyzed. Please try again.');
+    } finally {
+      setPatchBusy(false);
+    }
   };
 
   useEffect(() => {
@@ -710,14 +771,15 @@ function App() {
         {view === 'home' && <HomeView onCamera={startCamera} onFile={handleFile} recentName={recentName} />}
         {view === 'frames' && <FrameReviewView documentName={documentName} frames={selectedFrames} onContinue={analyzeFrames} onReset={reset} />}
         {view === 'processing' && <ProcessingView documentName={documentName} status={processingStatus} error={processingError} onRetry={selectedFrames.length ? analyzeFrames : lastCapture ? () => void beginProcessing(lastCapture.name, lastCapture) : null} onReset={reset} />}
-        {view === 'review' && analysis && <ReviewView documentName={documentName} analysis={analysis} patchDone={patchDone} selectedPageNumber={selectedPageNumber} onSelectPage={setSelectedPageNumber} onPatch={openPatch} onExport={handleExport} />}
-        {view === 'patch' && analysis && (
+        {view === 'review' && analysis && <ReviewView documentName={documentName} analysis={analysis} selectedPageNumber={selectedPageNumber} onSelectPage={setSelectedPageNumber} onPatch={openPatch} onExport={handleExport} />}
+        {view === 'patch' && analysis && patchTarget !== null && (
           <PatchView
-            pageNumber={flaggedPage?.pageNumber ?? selectedPageNumber}
+            key={patchTarget}
+            pageNumber={patchTarget}
+            busy={patchBusy}
+            error={patchError}
             onBack={() => setView('review')}
-            onPatchComplete={finishPatch}
-            patchImage={patchImage}
-            onPatchImage={setPatchImage}
+            onSubmit={(photo) => void submitPatch(photo)}
           />
         )}
       </div>

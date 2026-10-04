@@ -9,3 +9,14 @@ export function getModelChain(env: NodeJS.ProcessEnv = process.env): string[] {
     .filter(Boolean);
   return configured.length ? configured : DEFAULT_MODELS;
 }
+
+// A target is one model on one API key, written "model@keyIndex". Quotas are per key and per
+// model, so the order tries the preferred model on every key before settling for a weaker one.
+export function buildTargets(models: string[], keyCount: number): string[] {
+  return models.flatMap((model) => Array.from({ length: Math.max(1, keyCount) }, (_, key) => `${model}@${key}`));
+}
+
+export function parseTarget(target: string): { model: string; keyIndex: number } {
+  const at = target.lastIndexOf("@");
+  return { model: target.slice(0, at), keyIndex: Number(target.slice(at + 1)) };
+}

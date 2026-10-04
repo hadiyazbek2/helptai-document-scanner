@@ -8,11 +8,7 @@
 import type { ReconstructedPage } from './reconstructedPage';
 import type { Usage } from './usage';
 
-export interface ProcessDocumentResult {
-  documentName: string;
-  pages: ReconstructedPage[];
-  selectedFrameCount: number;
-  discardedFrameCount: number;
-  processingNote: string;
+export interface ProcessPageResult {
+  page: ReconstructedPage;
   usage?: Usage;
 }

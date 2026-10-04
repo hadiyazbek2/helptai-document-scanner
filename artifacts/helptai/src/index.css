@@ -495,3 +495,18 @@
 .sheet-plain { margin-top: .9rem; color: hsl(var(--muted-foreground)); font-size: .72rem; }
 .sheet-plain summary { cursor: pointer; font-family: var(--app-font-mono); letter-spacing: .08em; text-transform: uppercase; font-size: .55rem; }
 @media (min-width: 640px) { .page-compare { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+
+/* ---------- retake (patch) flow ---------- */
+.retake-selected { margin-top: .75rem; }
+.flag-list { display: grid; gap: .95rem; margin: .55rem 0 0; padding: 0; list-style: none; }
+.flag-list li { display: grid; gap: .4rem; padding-top: .85rem; border-top: 1px solid rgba(46,58,70,.12); }
+.flag-list li:first-child { padding-top: 0; border-top: 0; }
+.flag-list p { margin: 0; color: hsl(var(--muted-foreground)); font-size: .8rem; line-height: 1.5; }
+.flag-title { padding: 0; border: 0; background: none; color: hsl(var(--foreground)); font-family: var(--app-font-serif); font-size: 1.1rem; font-weight: 600; text-align: left; cursor: pointer; }
+.thumb.thumb-patched { box-shadow: inset 0 -3px 0 hsl(var(--secondary, 105 20% 60%)); }
+.patch-preview { position: relative; }
+.patch-busy { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: .6rem; background: rgba(247,243,236,.86); color: hsl(var(--foreground)); font-size: .85rem; }
+.patch-busy svg { animation: spin 1.1s linear infinite; }
+.patch-error { color: #7a4f27; }
+@keyframes spin { to { transform: rotate(360deg); } }

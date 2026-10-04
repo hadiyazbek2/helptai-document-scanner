@@ -66,12 +66,14 @@ export function resetModelCooldowns() {
   cooldowns.clear();
 }
 
+export type FallbackEvent = { model: string; kind: FailureKind; attempt: number; error: unknown };
+
 type Options = {
   attemptsPerModel?: number;
   baseDelayMs?: number;
   sleep?: (ms: number) => Promise<void>;
   now?: () => number;
-  onEvent?: (event: { model: string; kind: FailureKind; attempt: number; error: unknown }) => void;
+  onEvent?: (event: FallbackEvent) => void;
 };
 
 // Runs `run` against each model in turn. Busy models are retried with backoff; models that

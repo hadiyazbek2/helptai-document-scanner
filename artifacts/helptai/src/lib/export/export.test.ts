@@ -15,7 +15,7 @@ const latin1 = (bytes: Uint8Array) => Array.from(bytes, (b) => String.fromCharCo
 function page(n: number, extra: Partial<Page> = {}): Page {
   return {
     id: `page-${n}`, pageNumber: n, title: `Title ${n}`, text: `Text of page ${n}.\nSecond paragraph ${n}.`,
-    confidence: 0.9, status: 'ok', reviewReason: null, image: PORTRAIT.dataUrl, imageSize: { width: 90, height: 120 }, blocks: [], pageBox: null, sourceFrameIndices: [0], bestFrameIndex: 0, ...extra,
+    confidence: 0.9, status: 'ok', reviewReason: null, image: PORTRAIT.dataUrl, imageSize: { width: 90, height: 120 }, blocks: [], pageBox: null, sourceFrameIndices: [0], bestFrameIndex: 0, retakes: 0, ...extra,
   };
 }
 const makeDoc = (pages: Page[], name = 'My notes'): Doc => ({ name, pages, selectedFrameCount: pages.length, discardedFrameCount: 0, processingNote: '' });
