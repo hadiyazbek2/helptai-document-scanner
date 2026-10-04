@@ -17,6 +17,10 @@ npm run dev               # web on :5173, API on :8080 (web proxies /api)
 | Command | What it does |
 |---|---|
 | `npm run dev` | Starts the API server and the web app together |
+| `npm run dev:phone` | Same, over HTTPS so a phone on the same Wi-Fi can use the camera |
+| `npm run eval -- <video>` | Runs the pipeline on a test video and saves the results to `data/` (see `data/README.md`) |
+| `npm run report` | Builds `data/report.md` (token use, cost, test runs) |
+| `npm test` | Unit tests |
 | `npm run typecheck` | Type-checks every package |
 | `npm run build` | Typecheck, then build web and API |
 
@@ -27,6 +31,7 @@ npm run dev               # web on :5173, API on :8080 (web proxies /api)
 | `GEMINI_API_KEY` | Required (or use `GEMINI_API_KEYS`). Google AI Studio key. |
 | `GEMINI_API_KEYS` | Optional. Comma-separated keys; the server moves to the next key when one is out of quota. |
 | `GEMINI_MODELS` | Optional. Comma-separated models tried in order; a busy or out-of-quota model falls through to the next (default `gemini-3.6-flash,gemini-3.8-flash,gemini-3.5-flash`). |
+| `USAGE_LOG_FILE` | Optional. Where the per-request token table is written (default `data/usage.csv`). |
 | `PORT` | Optional. API port (default 8080). |
 | `API_PORT` | Optional. Port the web dev server proxies `/api` to (default 8080). |
 

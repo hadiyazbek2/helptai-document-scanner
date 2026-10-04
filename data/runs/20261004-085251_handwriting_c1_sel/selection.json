@@ -1,0 +1,57 @@
+{
+  "video": "handwriting",
+  "duration": 17.262333,
+  "width": 478,
+  "height": 850,
+  "seconds": 5.55,
+  "frames": [
+    {
+      "timestamp": 0.03,
+      "clarity": 0.873,
+      "width": 478,
+      "height": 850
+    },
+    {
+      "timestamp": 4.23,
+      "clarity": 0.97,
+      "width": 478,
+      "height": 850
+    },
+    {
+      "timestamp": 7.03,
+      "clarity": 0.872,
+      "width": 478,
+      "height": 850
+    },
+    {
+      "timestamp": 8.46,
+      "clarity": 1,
+      "width": 478,
+      "height": 850
+    },
+    {
+      "timestamp": 11.66,
+      "clarity": 0.854,
+      "width": 478,
+      "height": 850
+    },
+    {
+      "timestamp": 12.86,
+      "clarity": 0.798,
+      "width": 478,
+      "height": 850
+    },
+    {
+      "timestamp": 15.26,
+      "clarity": 0.715,
+      "width": 478,
+      "height": 850
+    },
+    {
+      "timestamp": 17.03,
+      "clarity": 0.884,
+      "width": 478,
+      "height": 850
+    }
+  ]
+}

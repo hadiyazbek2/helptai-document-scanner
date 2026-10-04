@@ -19,10 +19,14 @@
     "build": "npm run typecheck && npm run build --workspaces --if-present",
     "typecheck": "npm run typecheck:libs && npm run typecheck --workspaces --if-present",
     "typecheck:libs": "tsc --build",
-    "test": "npm run test --workspaces --if-present"
+    "test": "npm run test --workspaces --if-present",
+    "eval": "node tools/eval.mjs",
+    "report": "node tools/report.mjs",
+    "dev:phone": "HTTPS=1 npm run dev"
   },
   "devDependencies": {
     "concurrently": "^9.2.0",
+    "playwright-core": "^1.63.0",
     "prettier": "^3.9.6",
     "typescript": "~5.9.3"
   },

@@ -7,6 +7,15 @@ import {
 } from './frame-metrics';
 import { selectBestFrames, type Sample } from './frame-selection';
 
+export type SelectionStats = {
+  videoSeconds: number;
+  width: number;
+  height: number;
+  samples: number;
+  seconds: number;
+  method: 'playback' | 'seeking';
+};
+
 export type SelectedFrame = {
   dataUrl: string;
   width: number;
@@ -28,7 +37,8 @@ const MAX_FRAMES = 45;
 export async function selectVideoFrames(
   file: File,
   onProgress?: (message: string) => void,
-  options: { method?: 'auto' | 'seek' } = {},
+  // `candidates` is the most frames kept per page view (1 = just the sharpest; default 3).
+  options: { method?: 'auto' | 'seek'; candidates?: number; onStats?: (stats: SelectionStats) => void } = {},
 ): Promise<SelectedFrame[]> {
   const url = URL.createObjectURL(file);
   const video = document.createElement('video');
@@ -39,6 +49,7 @@ export async function selectVideoFrames(
 
   try {
     await waitForVideo(video);
+    const startedAt = performance.now();
     const duration = await readDuration(video);
 
     const analysis = makeCanvas(video, ANALYSIS_EDGE);
@@ -61,17 +72,26 @@ export async function selectVideoFrames(
     // Playing the video quickly is about twice as fast as jumping to every sample (seeking costs
     // ~100 ms each); browsers without frame callbacks, or where playback stalls, seek instead.
     let samples: Sample[] = [];
+    let method: SelectionStats['method'] = 'seeking';
     if (options.method !== 'seek' && supportsFrameCallback(video)) {
       try {
         samples = await sampleByPlayback(video, step, duration, measure, progress);
+        method = 'playback';
       } catch {
         samples = [];
       }
     }
-    if (samples.length < 2) samples = await sampleBySeeking(video, step, duration, measure, progress);
+    if (samples.length < 2) {
+      samples = await sampleBySeeking(video, step, duration, measure, progress);
+      method = 'seeking';
+    }
 
     onProgress?.('Choosing the clearest view of each page…');
-    const { chosen } = selectBestFrames(samples, { step, maxFrames: MAX_FRAMES });
+    const { chosen } = selectBestFrames(samples, {
+      step,
+      maxFrames: MAX_FRAMES,
+      maxBackups: Math.max(0, Math.min(2, (options.candidates ?? 3) - 1)),
+    });
 
     // Second pass: re-read only the chosen moments at full quality.
     const output = makeCanvas(video, OUTPUT_EDGE);
@@ -91,6 +111,14 @@ export async function selectVideoFrames(
       });
       onProgress?.(`Preparing frame ${position + 1} of ${chosen.length}…`);
     }
+    options.onStats?.({
+      videoSeconds: duration,
+      width: video.videoWidth,
+      height: video.videoHeight,
+      samples: samples.length,
+      seconds: (performance.now() - startedAt) / 1000,
+      method,
+    });
     return frames;
   } finally {
     URL.revokeObjectURL(url);

@@ -23,7 +23,7 @@ import type { ProcessDocumentResult, ProcessPageResult } from '@helptai/api-clie
 import { PageReplica } from '@/components/page-replica';
 import { applyPatch, buildDoc, type Doc, type Page } from '@/lib/doc-model';
 import { prepareImage } from '@/lib/image';
-import { selectVideoFrames, type SelectedFrame } from '@/lib/video-processing';
+import { selectVideoFrames, type SelectedFrame, type SelectionStats } from '@/lib/video-processing';
 
 type View = 'home' | 'frames' | 'processing' | 'review' | 'patch';
 type ToastTone = 'sage' | 'amber';
@@ -198,11 +198,13 @@ function ProcessingView({
 function FrameReviewView({
   documentName,
   frames,
+  stats,
   onContinue,
   onReset,
 }: {
   documentName: string;
   frames: SelectedFrame[];
+  stats: SelectionStats | null;
   onContinue: () => void;
   onReset: () => void;
 }) {
@@ -229,6 +231,11 @@ function FrameReviewView({
           </figure>
         ))}
       </div>
+      {stats && (
+        <p className="frame-stats" data-testid="text-selection-stats">
+          read a {stats.videoSeconds.toFixed(0)} s video ({stats.width}×{stats.height}) in {stats.seconds.toFixed(1)} s · {stats.samples} moments checked · {stats.method}
+        </p>
+      )}
       <div className="frame-review-actions">
         <button className="button button-primary" onClick={onContinue} data-testid="button-continue-frame-review">
           <Sparkles size={16} />
@@ -555,6 +562,7 @@ function App() {
   const [recentName, setRecentName] = useState<string | null>(null);
   const [analysis, setAnalysis] = useState<Doc | null>(null);
   const [selectedFrames, setSelectedFrames] = useState<SelectedFrame[]>([]);
+  const [selectionStats, setSelectionStats] = useState<SelectionStats | null>(null);
   const [selectedPageNumber, setSelectedPageNumber] = useState(1);
   const [processingStatus, setProcessingStatus] = useState('Preparing your capture…');
   const [processingError, setProcessingError] = useState<string | null>(null);
@@ -598,7 +606,7 @@ function App() {
     setView('processing');
 
     try {
-      const frames = await selectVideoFrames(file, setProcessingStatus);
+      const frames = await selectVideoFrames(file, setProcessingStatus, { onStats: setSelectionStats });
       if (!frames.length) throw new Error('No clear page frames were found in this video.');
       setSelectedFrames(frames);
       setProcessingStatus(`${frames.length} clear frames are ready to review.`);
@@ -769,7 +777,7 @@ function App() {
       <div className="page-wrap">
         <BrandHeader onReset={reset} />
         {view === 'home' && <HomeView onCamera={startCamera} onFile={handleFile} recentName={recentName} />}
-        {view === 'frames' && <FrameReviewView documentName={documentName} frames={selectedFrames} onContinue={analyzeFrames} onReset={reset} />}
+        {view === 'frames' && <FrameReviewView documentName={documentName} frames={selectedFrames} stats={selectionStats} onContinue={analyzeFrames} onReset={reset} />}
         {view === 'processing' && <ProcessingView documentName={documentName} status={processingStatus} error={processingError} onRetry={selectedFrames.length ? analyzeFrames : lastCapture ? () => void beginProcessing(lastCapture.name, lastCapture) : null} onReset={reset} />}
         {view === 'review' && analysis && <ReviewView documentName={documentName} analysis={analysis} selectedPageNumber={selectedPageNumber} onSelectPage={setSelectedPageNumber} onPatch={openPatch} onExport={handleExport} />}
         {view === 'patch' && analysis && patchTarget !== null && (

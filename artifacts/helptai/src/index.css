@@ -510,3 +510,5 @@
 .patch-busy svg { animation: spin 1.1s linear infinite; }
 .patch-error { color: #7a4f27; }
 @keyframes spin { to { transform: rotate(360deg); } }
+
+.frame-stats { margin: .9rem 0 0; color: hsl(var(--muted-foreground)); font-family: var(--app-font-mono); font-size: .58rem; letter-spacing: .04em; }

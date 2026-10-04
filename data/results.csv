@@ -1,0 +1,12 @@
+run_id,timestamp,video,duration_s,resolution,size_mb,method,candidates,frames_kept,selection_s,expected_pages,ranges_covered,junk_frames,gemini,model,gemini_s,pages,pages_match,mapping_correct,flagged,input_tokens,output_tokens,thinking_tokens,cost_intro_usd,cost_standard_usd,run_dir
+20261004-085244_Book_c1_sel,2026-10-04T08:52:44.384Z,Book,18.2,478x850,4.1,auto,1,6,5.5,5,5/5,0,no,,,,,,,,,,,,data/runs/20261004-085244_Book_c1_sel
+20261004-085251_handwriting_c1_sel,2026-10-04T08:52:51.398Z,handwriting,17.3,478x850,3.9,auto,1,8,5.5,8,8/8,0,no,,,,,,,,,,,,data/runs/20261004-085251_handwriting_c1_sel
+20261004-085258_Book_c3_sel,2026-10-04T08:52:58.613Z,Book,18.2,478x850,4.1,auto,3,11,6.2,5,5/5,0,no,,,,,,,,,,,,data/runs/20261004-085258_Book_c3_sel
+20261004-085306_handwriting_c3_sel,2026-10-04T08:53:06.022Z,handwriting,17.3,478x850,3.9,auto,3,12,6.4,8,8/8,0,no,,,,,,,,,,,,data/runs/20261004-085306_handwriting_c3_sel
+20261004-085319_handwriting_c1,2026-10-04T08:53:19.188Z,handwriting,17.3,478x850,3.9,auto,1,8,5.4,8,8/8,0,yes,gemini-3.8-flash,74.9,8,yes,8/8,2,9746,6323,1496,0.0366,0.0733,data/runs/20261004-085319_handwriting_c1
+20261004-085440_Book_c1,2026-10-04T08:54:40.633Z,Book,18.2,478x850,4.1,auto,1,6,5.5,5,5/5,0,yes,gemini-3.5-flash,123.5,5,yes,5/5,0,7486,3328,11681,0.1463,0.1463,data/runs/20261004-085440_Book_c1
+20261004-085651_handwriting_c3,2026-10-04T08:56:51.121Z,handwriting,17.3,478x850,3.9,auto,3,12,6.5,8,8/8,0,yes,gemini-3.6-flash,45.6,8,yes,8/8,1,14264,5802,2800,0.0430,0.0859,data/runs/20261004-085651_handwriting_c3
+20261004-085744_Book_c3,2026-10-04T08:57:44.237Z,Book,18.2,478x850,4.1,auto,3,11,6.5,5,5/5,0,yes,gemini-3.6-flash,81.9,5,yes,5/5,0,13134,4303,3313,0.0384,0.0768,data/runs/20261004-085744_Book_c3
+20261004-085943_handwriting_c1_pin36,2026-10-04T08:59:43.172Z,handwriting,17.3,478x850,3.9,auto,1,8,5.5,8,8/8,0,yes,,1.9,,,,,,,,,,data/runs/20261004-085943_handwriting_c1_pin36
+20261004-085952_Book_c1_pin36,2026-10-04T08:59:52.354Z,Book,18.2,478x850,4.1,auto,1,6,5.5,5,5/5,0,yes,,0.0,,,,,,,,,,data/runs/20261004-085952_Book_c1_pin36
+20261004-090029_handwriting_c3_pin38,2026-10-04T09:00:29.458Z,handwriting,17.3,478x850,3.9,auto,3,12,6.0,8,8/8,0,yes,,22.1,,,,,,,,,,data/runs/20261004-090029_handwriting_c3_pin38

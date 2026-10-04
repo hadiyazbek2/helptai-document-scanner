@@ -66,6 +66,12 @@ describe('selectBestFrames', () => {
     expect(selectBestFrames(view(4), { step: STEP }).chosen).toHaveLength(1);
   });
 
+  it('gives one frame per view when backups are switched off', () => {
+    const samples = timeline(repeat(1, 2, 16));
+    expect(selectBestFrames(samples, { step: STEP, maxBackups: 0 }).chosen).toHaveLength(1);
+    expect(selectBestFrames(samples, { step: STEP, maxBackups: 1 }).chosen).toHaveLength(2);
+  });
+
   it('keeps the sharpest frame as the main pick even when backups exist', () => {
     const samples = timeline(repeat(1, 2, 12).map(([p, s], i): [number, number] => [p, i === 8 ? 3.2 : s]));
     const { chosen } = selectBestFrames(samples, { step: STEP });

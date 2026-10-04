@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { Router, type IRouter, type Response } from "express";
 import { ProcessDocumentBody, ProcessPageBody, type ErrorResponseCode } from "@helptai/api-zod";
 import { clients } from "@helptai/integrations-gemini-ai";
@@ -5,6 +6,7 @@ import { buildPagePrompt, buildPrompt, mainPage, RESPONSE_SCHEMA } from "../lib/
 import { AllModelsFailedError } from "../lib/gemini-call";
 import { getModelChain } from "../lib/gemini-config";
 import { analyzeWith, buildParts, type GenerateFn, type PromptImage } from "../lib/gemini-run";
+import { appendUsage } from "../lib/usage-log";
 
 const router: IRouter = Router();
 
@@ -35,30 +37,74 @@ function sendError(res: Response, code: ErrorResponseCode, message = MESSAGES[co
   res.status(STATUS[code]).json({ error: message, code });
 }
 
-// Builds the function that makes one real Gemini call for the given images and prompt.
-function makeGenerate(prompt: string, images: PromptImage[]): GenerateFn {
+type CallContext = { endpoint: string; requestId: string; document: string; frames: number; uploadKb: number };
+
+// Builds the function that makes one real Gemini call for the given images and prompt, and
+// records its token use (also for failed or refused attempts) in the usage table.
+function makeGenerate(prompt: string, images: PromptImage[], context: CallContext): GenerateFn {
   const contents = [{ role: "user" as const, parts: buildParts(prompt, images) }];
+  let attempt = 0;
   return async ({ model, keyIndex }) => {
-    const response = await clients[keyIndex].models.generateContent({
+    const started = Date.now();
+    const base = {
+      timestamp: new Date(started).toISOString(),
+      endpoint: context.endpoint,
+      requestId: context.requestId,
+      attempt: attempt++,
+      document: context.document,
       model,
-      contents,
-      config: {
-        maxOutputTokens: 16384,
-        responseMimeType: "application/json",
-        responseSchema: RESPONSE_SCHEMA,
-      },
-    });
-    return {
-      text: response.text ?? "",
-      finishReason: response.candidates?.[0]?.finishReason ? String(response.candidates[0].finishReason) : undefined,
-      usage: {
-        inputTokens: response.usageMetadata?.promptTokenCount,
-        outputTokens: response.usageMetadata?.candidatesTokenCount,
-        thinkingTokens: response.usageMetadata?.thoughtsTokenCount,
-      },
+      keyIndex,
+      frames: context.frames,
+      uploadKb: context.uploadKb,
     };
+    try {
+      const response = await clients[keyIndex].models.generateContent({
+        model,
+        contents,
+        config: {
+          maxOutputTokens: 16384,
+          responseMimeType: "application/json",
+          responseSchema: RESPONSE_SCHEMA,
+        },
+      });
+      const finishReason = response.candidates?.[0]?.finishReason ? String(response.candidates[0].finishReason) : "";
+      const usage = {
+        inputTokens: response.usageMetadata?.promptTokenCount ?? 0,
+        outputTokens: response.usageMetadata?.candidatesTokenCount ?? 0,
+        thinkingTokens: response.usageMetadata?.thoughtsTokenCount ?? 0,
+      };
+      appendUsage({
+        ...base,
+        outcome: ["", "STOP", "MAX_TOKENS"].includes(finishReason) ? "ok" : "blocked",
+        finishReason,
+        httpStatus: 200,
+        latencyMs: Date.now() - started,
+        ...usage,
+        totalTokens: response.usageMetadata?.totalTokenCount ?? usage.inputTokens + usage.outputTokens + usage.thinkingTokens,
+        note: "",
+      });
+      return { text: response.text ?? "", finishReason: finishReason || undefined, usage };
+    } catch (error) {
+      const status = Number((error as { status?: unknown })?.status);
+      appendUsage({
+        ...base,
+        outcome: "error",
+        finishReason: "",
+        httpStatus: Number.isFinite(status) ? status : "",
+        latencyMs: Date.now() - started,
+        inputTokens: 0,
+        outputTokens: 0,
+        thinkingTokens: 0,
+        totalTokens: 0,
+        note: error instanceof Error ? error.message.replace(/\s+/g, " ").slice(0, 160) : String(error).slice(0, 160),
+      });
+      throw error;
+    }
   };
 }
+
+const newRequestId = () => randomUUID().slice(0, 8);
+const uploadKb = (images: PromptImage[]) => Math.round(images.reduce((total, image) => total + image.data.length * 0.75, 0) / 1024);
 
 router.post("/process-document", async (req, res) => {
   const parsed = ProcessDocumentBody.safeParse(req.body);
@@ -79,13 +125,13 @@ router.post("/process-document", async (req, res) => {
   }
 
   try {
+    const images = inlineFrames.flatMap((frame, index) =>
+      frame ? [{ ...frame, label: `Frame ${index + 1} (${frames[index].timestamp.toFixed(1)}s):` }] : [],
+    );
     const { pages, model, usage } = await analyzeWith(
-      makeGenerate(
-        buildPrompt(documentName, frames),
-        inlineFrames.flatMap((frame, index) =>
-          frame ? [{ ...frame, label: `Frame ${index + 1} (${frames[index].timestamp.toFixed(1)}s):` }] : [],
-        ),
-      ),
+      makeGenerate(buildPrompt(documentName, frames), images, {
+        endpoint: "process-document", requestId: newRequestId(), document: documentName, frames: frames.length, uploadKb: uploadKb(images),
+      }),
       frames,
       { models: getModelChain(), keyCount: clients.length, onEvent: logAttempt(req) },
     );
@@ -122,8 +168,11 @@ router.post("/process-page", async (req, res) => {
 
   const { documentName, pageNumber } = parsed.data;
   try {
+    const images = [{ ...image, label: "Frame 1:" }];
     const { pages, model, usage } = await analyzeWith(
-      makeGenerate(buildPagePrompt(documentName, pageNumber), [{ ...image, label: "Frame 1:" }]),
+      makeGenerate(buildPagePrompt(documentName, pageNumber), images, {
+        endpoint: "process-page", requestId: newRequestId(), document: documentName, frames: 1, uploadKb: uploadKb(images),
+      }),
       [{ timestamp: 0, sharpness: 1, difference: 0 }],
       { models: getModelChain(), keyCount: clients.length, onEvent: logAttempt(req) },
     );

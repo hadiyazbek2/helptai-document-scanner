@@ -1,0 +1,595 @@
+{
+  "documentName": "Book",
+  "pages": [
+    {
+      "pageNumber": 1,
+      "title": "3.2 PROPAGATION OF SOUND",
+      "text": "The frequencies of signals emitted by a loudspeaker are governed by the dimensions of the membrane. These frequencies become higher as the diameter of the conical membrane gets smaller. A loudspeaker of diameter 21 cm, for example, emits sound of frequencies ranging between 50 Hz and 5000 Hz, while a loudspeaker of diameter 5 cm produces sound of frequencies between 5000 Hz and 20000 Hz. This is why a speaker system contains two or three loudspeaker (Figure 3.9).\n\nQuestion 3.1\n\nDoes a loudspeaker function when connected to a direct current source? Why?\n\nMeasurement of the frequency of the membrane of a loudspeaker\n\nAdjust the frequency of the flashes of a stroboscope to its maximum value.\nLet the loudspeaker vibrate with a given frequency delivered by a low-frequency generator. Direct the light emitted by the stroboscope towards the membrane of the loudspeaker. Decrease, gradually, the frequency of the flashes until you get, for the first time, an apparent motionless state of the membrane. Read then the frequency of the flashes. This value represents the frequency of the membrane. Compare this value to that of the stimulating potential difference indicated by the L.F.G. You find that they are approximately the same.\n\nFigure 3.9 - A speaker system\n\n3.2 PROPAGATION OF SOUND\n\na. Characteristics of a sound wave\n\nStrike, with a hammer, one tine of a tuning fork. The emitted sound is visualized by means of a microphone connected to one channel of an oscilloscope, which gives the sinusoidal curve of figure 3.10.\nIn front of a microphone, always connected to the oscilloscope, pronounce a vowel with a constant tone (aaaa for example). You observe a periodic but non-sinusoidal curve.\n\nFigure 3.10 A sound wave is periodic\n\nWhatever its origin is, a sound wave is a periodic wave.\n\n48 Emission and Propagation of Sound",
+      "confidence": 0.95,
+      "needsReview": false,
+      "reviewReason": null,
+      "sourceFrameIndices": [
+        0
+      ],
+      "bestFrameIndex": 0,
+      "pageBox": [
+        0,
+        48,
+        888,
+        1000
+      ],
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "The frequencies of signals emitted by a loudspeaker are governed by the dimensions of the membrane. These frequencies become higher as the diameter of the conical membrane gets smaller. A loudspeaker of diameter 21 cm, for example, emits sound of frequencies ranging between 50 Hz and 5000 Hz, while a loudspeaker of diameter 5 cm produces sound of frequencies between 5000 Hz and 20000 Hz. This is why a speaker system contains two or three loudspeaker (Figure 3.9).",
+          "box": [
+            50,
+            196,
+            206,
+            736
+          ]
+        },
+        {
+          "type": "heading",
+          "text": "Question 3.1",
+          "level": 3,
+          "box": null
+        },
+        {
+          "type": "paragraph",
+          "text": "Does a loudspeaker function when connected to a direct current source? Why?",
+          "box": [
+            238,
+            214,
+            279,
+            706
+          ]
+        },
+        {
+          "type": "heading",
+          "text": "Measurement of the frequency of the membrane of a loudspeaker",
+          "level": 3,
+          "box": null
+        },
+        {
+          "type": "paragraph",
+          "text": "Adjust the frequency of the flashes of a stroboscope to its maximum value.\nLet the loudspeaker vibrate with a given frequency delivered by a low-frequency generator. Direct the light emitted by the stroboscope towards the membrane of the loudspeaker. Decrease, gradually, the frequency of the flashes until you get, for the first time, an apparent motionless state of the membrane. Read then the frequency of the flashes. This value represents the frequency of the membrane. Compare this value to that of the stimulating potential difference indicated by the L.F.G. You find that they are approximately the same.",
+          "box": [
+            330,
+            178,
+            506,
+            720
+          ]
+        },
+        {
+          "type": "figure",
+          "text": "",
+          "box": [
+            53,
+            775,
+            362,
+            966
+          ]
+        },
+        {
+          "type": "caption",
+          "text": "Figure 3.9 - A speaker system",
+          "box": [
+            359,
+            781,
+            381,
+            965
+          ]
+        },
+        {
+          "type": "heading",
+          "text": "3.2 PROPAGATION OF SOUND",
+          "level": 1,
+          "box": null
+        },
+        {
+          "type": "heading",
+          "text": "a. Characteristics of a sound wave",
+          "level": 2,
+          "box": null
+        },
+        {
+          "type": "paragraph",
+          "text": "Strike, with a hammer, one tine of a tuning fork. The emitted sound is visualized by means of a microphone connected to one channel of an oscilloscope, which gives the sinusoidal curve of figure 3.10.\nIn front of a microphone, always connected to the oscilloscope, pronounce a vowel with a constant tone (aaaa for example). You observe a periodic but non-sinusoidal curve.",
+          "box": [
+            608,
+            161,
+            719,
+            708
+          ]
+        },
+        {
+          "type": "figure",
+          "text": "",
+          "box": [
+            576,
+            732,
+            730,
+            975
+          ]
+        },
+        {
+          "type": "caption",
+          "text": "Figure 3.10 A sound wave is periodic",
+          "box": [
+            739,
+            737,
+            755,
+            967
+          ]
+        },
+        {
+          "type": "paragraph",
+          "text": "Whatever its origin is, a sound wave is a periodic wave.",
+          "box": [
+            734,
+            168,
+            777,
+            680
+          ]
+        },
+        {
+          "type": "footer",
+          "text": "48 Emission and Propagation of Sound",
+          "box": [
+            816,
+            560,
+            852,
+            902
+          ]
+        }
+      ],
+      "modelUsed": "gemini-3.6-flash"
+    },
+    {
+      "pageNumber": 2,
+      "title": "Experiment 3.2",
+      "text": "Experiment 3.2\n\n• L.F.G.\n• Loudspeaker\n• Candle\n\nProcedure and observation\n\n• Put a lit candle 5 cm in front of the membrane of a loudspeaker. Observe the flame of the candle. It appears as an elongated spindle (Figure 3.11).\n• Connect the loudspeaker across the L.F.G. and set it to 5 Hz. You observe that the flame vibrates.\n• Increase the frequency of the L.F.G. to 50 Hz. You cannot observe the vibrations of the flame.\n• Using the \"amplitude\" knob of the L.F.G., increase the amplitude of vibrations. The flame gets shorter and wider (Figure 3.12).\n• Reduce the amplitude. The flame gets narrower and longer.\n\nFigure 3.11 the flame is an elongated spindle\n\nFigure 3.12 The flame is shortened and broadened.\n\nInterpretation\n\nFor frequencies less than 10 Hz, the eye can observe the vibrations of the membrane of the loudspeaker. The particles of air in contact with the vibrating membrane, undergo vibrations which are transmitted successively to the neighboring layers thus creating successive zones of compression and elongation. Vibrations are transmitted to the flame by means of the layer of air particles in contact with the flame. For frequencies above 10 Hz, the flame vibrates but the eye cannot observe these vibrations. It appears, however, that the flame gets wider. The widening of the flame is an indication that the vibrations are longitudinal.\n\nConclusion\n\nIn air, sound is transmitted as longitudinal waves.\n\n49 Emission and Propagation of Sound",
+      "confidence": 0.95,
+      "needsReview": false,
+      "reviewReason": null,
+      "sourceFrameIndices": [
+        1,
+        2,
+        3
+      ],
+      "bestFrameIndex": 2,
+      "pageBox": [
+        39,
+        58,
+        822,
+        997
+      ],
+      "blocks": [
+        {
+          "type": "heading",
+          "text": "Experiment 3.2",
+          "level": 2,
+          "box": null
+        },
+        {
+          "type": "list",
+          "text": "",
+          "items": [
+            "L.F.G.",
+            "Loudspeaker",
+            "Candle"
+          ],
+          "box": null
+        },
+        {
+          "type": "heading",
+          "text": "Procedure and observation",
+          "level": 3,
+          "box": null
+        },
+        {
+          "type": "paragraph",
+          "text": "• Put a lit candle 5 cm in front of the membrane of a loudspeaker. Observe the flame of the candle. It appears as an elongated spindle (Figure 3.11).\n• Connect the loudspeaker across the L.F.G. and set it to 5 Hz. You observe that the flame vibrates.\n• Increase the frequency of the L.F.G. to 50 Hz. You cannot observe the vibrations of the flame.\n• Using the \"amplitude\" knob of the L.F.G., increase the amplitude of vibrations. The flame gets shorter and wider (Figure 3.12).\n• Reduce the amplitude. The flame gets narrower and longer.",
+          "box": [
+            193,
+            114,
+            388,
+            591
+          ]
+        },
+        {
+          "type": "figure",
+          "text": "",
+          "box": [
+            89,
+            638,
+            301,
+            915
+          ]
+        },
+        {
+          "type": "caption",
+          "text": "Figure 3.11 the flame is an elongated spindle",
+          "box": [
+            304,
+            655,
+            323,
+            893
+          ]
+        },
+        {
+          "type": "figure",
+          "text": "",
+          "box": [
+            363,
+            427,
+            470,
+            874
+          ]
+        },
+        {
+          "type": "caption",
+          "text": "Figure 3.12 The flame is shortened and broadened.",
+          "box": [
+            471,
+            627,
+            492,
+            911
+          ]
+        },
+        {
+          "type": "heading",
+          "text": "Interpretation",
+          "level": 3,
+          "box": null
+        },
+        {
+          "type": "paragraph",
+          "text": "For frequencies less than 10 Hz, the eye can observe the vibrations of the membrane of the loudspeaker. The particles of air in contact with the vibrating membrane, undergo vibrations which are transmitted successively to the neighboring layers thus creating successive zones of compression and elongation. Vibrations are transmitted to the flame by means of the layer of air particles in contact with the flame. For frequencies above 10 Hz, the flame vibrates but the eye cannot observe these vibrations. It appears, however, that the flame gets wider. The widening of the flame is an indication that the vibrations are longitudinal.",
+          "box": [
+            432,
+            98,
+            635,
+            592
+          ]
+        },
+        {
+          "type": "heading",
+          "text": "Conclusion",
+          "level": 3,
+          "box": null
+        },
+        {
+          "type": "paragraph",
+          "text": "In air, sound is transmitted as longitudinal waves.",
+          "box": [
+            689,
+            95,
+            704,
+            572
+          ]
+        },
+        {
+          "type": "footer",
+          "text": "49 Emission and Propagation of Sound",
+          "box": [
+            773,
+            493,
+            788,
+            802
+          ]
+        }
+      ],
+      "modelUsed": "gemini-3.6-flash"
+    },
+    {
+      "pageNumber": 3,
+      "title": "Experiment 3.3",
+      "text": "Experiment 3.3\n\n• Large and transparent glass jar.\n• Cell (battery)\n• Electric bell\n• Bulb\n• Vacuum pump\n\nProcedure and observation\n\n• Connect, in series and inside the jar, the cell, the electric bell, and the lamp.\n• Close the circuit. The lamp emits light and the electric bell emits a sound which is clearly heard outside the jar.\n• Using the vacuum pump, vacate air gradually out of the jar. The light emitted by the bulb is always clearly seen outside the jar, while the sound emitted by the bell gets weaker as air is pumped out of the jar until it nearly disappears as virtual vacuum is reached.\n\nFigure 3.13 - Sound does not propagate in vacuum\n\nConclusion\n\nThe presence of a material medium is necessary for the propagation of sound waves. This propagation takes place by means of the air particles or, more generally, the particles of the medium (solid, liquid, or gas) without transfer of matter.\nSound waves cannot propagate in vacuum; they propagate in solids, liquids or gases.\n\nb. Speed of propagation\n\nA sound wave, like any other wave, propagates at a constant speed in a given homogeneous medium. The speed of its uniform propagation can be calculated by applying the relation: v = d / t where d represents the distance covered and t the time needed to cover it. This speed is independent of the frequency of sound and also of its amplitude provided that it remains sufficiently small. It depends only on the physical properties of the medium (nature, temperature, elasticity, ...). In solids, sound propagates with the largest speeds. Its speeds in gases are...\n\n50 Emission and Propagation of Sound",
+      "confidence": 0.95,
+      "needsReview": false,
+      "reviewReason": null,
+      "sourceFrameIndices": [
+        4,
+        5,
+        6,
+        7
+      ],
+      "bestFrameIndex": 7,
+      "pageBox": [
+        36,
+        17,
+        852,
+        856
+      ],
+      "blocks": [
+        {
+          "type": "heading",
+          "text": "Experiment 3.3",
+          "level": 2,
+          "box": null
+        },
+        {
+          "type": "list",
+          "text": "",
+          "items": [
+            "Large and transparent glass jar.",
+            "Cell (battery)",
+            "Electric bell",
+            "Bulb",
+            "Vacuum pump"
+          ],
+          "box": null
+        },
+        {
+          "type": "heading",
+          "text": "Procedure and observation",
+          "level": 3,
+          "box": null
+        },
+        {
+          "type": "paragraph",
+          "text": "• Connect, in series and inside the jar, the cell, the electric bell, and the lamp.\n• Close the circuit. The lamp emits light and the electric bell emits a sound which is clearly heard outside the jar.\n• Using the vacuum pump, vacate air gradually out of the jar. The light emitted by the bulb is always clearly seen outside the jar, while the sound emitted by the bell gets weaker as air is pumped out of the jar until it nearly disappears as virtual vacuum is reached.",
+          "box": [
+            240,
+            131,
+            394,
+            578
+          ]
+        },
+        {
+          "type": "figure",
+          "text": "",
+          "box": [
+            210,
+            626,
+            344,
+            839
+          ]
+        },
+        {
+          "type": "caption",
+          "text": "Figure 3.13 - Sound does not propagate in vacuum",
+          "box": [
+            348,
+            660,
+            375,
+            839
+          ]
+        },
+        {
+          "type": "heading",
+          "text": "Conclusion",
+          "level": 3,
+          "box": null
+        },
+        {
+          "type": "paragraph",
+          "text": "The presence of a material medium is necessary for the propagation of sound waves. This propagation takes place by means of the air particles or, more generally, the particles of the medium (solid, liquid, or gas) without transfer of matter.\nSound waves cannot propagate in vacuum; they propagate in solids, liquids or gases.",
+          "box": [
+            433,
+            118,
+            538,
+            574
+          ]
+        },
+        {
+          "type": "heading",
+          "text": "b. Speed of propagation",
+          "level": 2,
+          "box": null
+        },
+        {
+          "type": "paragraph",
+          "text": "A sound wave, like any other wave, propagates at a constant speed in a given homogeneous medium. The speed of its uniform propagation can be calculated by applying the relation: v = d / t where d represents the distance covered and t the time needed to cover it. This speed is independent of the frequency of sound and also of its amplitude provided that it remains sufficiently small. It depends only on the physical properties of the medium (nature, temperature, elasticity, ...). In solids, sound propagates with the largest speeds. Its speeds in gases are...",
+          "box": [
+            591,
+            84,
+            756,
+            592
+          ]
+        },
+        {
+          "type": "footer",
+          "text": "50 Emission and Propagation of Sound",
+          "box": [
+            795,
+            459,
+            821,
+            778
+          ]
+        }
+      ],
+      "modelUsed": "gemini-3.6-flash"
+    },
+    {
+      "pageNumber": 4,
+      "title": "Measurement of the speed of sound in air",
+      "text": "the smallest. The following table gives some approximate values of the speed of sound in some media.\n\n• air at 0°C : 331ms⁻¹\n• air at 20°C : 340 ms⁻¹\n• water : 1500 ms⁻¹\n• mercury : 1400 ms⁻¹\n• steel : 5000 ms⁻¹\n• iron : 6000 ms⁻¹\n• lead : 1200 ms⁻¹\n• glass : 5000 - 6000 ms⁻¹\n\nThe speed of sound in some nonelastic substances, such as wool, is very small. This is why they are used as sound insulators.\n\nc. Measurement of the speed of sound in air\n\nThere are numerous experiments for measuring the speed of sound in air. The first measurement was done at the Academy of Sciences in Paris in 1738.\n\nExperiment 3.4\n\n• L.F.G.\n• Loudspeaker\n• Microphone\n• Oscilloscope\n\nProcedure and observation\n\n• Build the set-up as in figure 3.14.\n• Set the frequency of the L.F.G. to 1000 Hz.\n• Adjust the initial position of the microphone such that the curves seen on the screen of the oscilloscope are in phase.\n• Displace the microphone slowly, to and from, until you get again the first coincidence of the two in-phase curves. The displacement d corresponds to the wavelength λ of the sound wave.\n• Measure, by means of a graduated ruler, the distance d. Knowing that the frequency f = 1000 Hz, determine the speed of sound in air by applying the relation: v = λ f. You get a value about 340 ms⁻¹.\n\n51 Emission and Propagation of Sound",
+      "confidence": 0.92,
+      "needsReview": false,
+      "reviewReason": null,
+      "sourceFrameIndices": [
+        8
+      ],
+      "bestFrameIndex": 8,
+      "pageBox": [
+        19,
+        64,
+        759,
+        966
+      ],
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "the smallest. The following table gives some approximate values of the speed of sound in some media.",
+          "box": [
+            55,
+            96,
+            81,
+            589
+          ]
+        },
+        {
+          "type": "list",
+          "text": "",
+          "items": [
+            "air at 0°C : 331ms⁻¹",
+            "air at 20°C : 340 ms⁻¹",
+            "water : 1500 ms⁻¹",
+            "mercury : 1400 ms⁻¹",
+            "steel : 5000 ms⁻¹",
+            "iron : 6000 ms⁻¹",
+            "lead : 1200 ms⁻¹",
+            "glass : 5000 - 6000 ms⁻¹"
+          ],
+          "box": null
+        },
+        {
+          "type": "paragraph",
+          "text": "The speed of sound in some nonelastic substances, such as wool, is very small. This is why they are used as sound insulators.",
+          "box": [
+            188,
+            93,
+            224,
+            591
+          ]
+        },
+        {
+          "type": "heading",
+          "text": "c. Measurement of the speed of sound in air",
+          "level": 2,
+          "box": null
+        },
+        {
+          "type": "paragraph",
+          "text": "There are numerous experiments for measuring the speed of sound in air. The first measurement was done at the Academy of Sciences in Paris in 1738.",
+          "box": [
+            265,
+            93,
+            299,
+            593
+          ]
+        },
+        {
+          "type": "heading",
+          "text": "Experiment 3.4",
+          "level": 2,
+          "box": null
+        },
+        {
+          "type": "list",
+          "text": "",
+          "items": [
+            "L.F.G.",
+            "Loudspeaker",
+            "Microphone",
+            "Oscilloscope"
+          ],
+          "box": null
+        },
+        {
+          "type": "heading",
+          "text": "Procedure and observation",
+          "level": 3,
+          "box": null
+        },
+        {
+          "type": "paragraph",
+          "text": "• Build the set-up as in figure 3.14.\n• Set the frequency of the L.F.G. to 1000 Hz.\n• Adjust the initial position of the microphone such that the curves seen on the screen of the oscilloscope are in phase.\n• Displace the microphone slowly, to and from, until you get again the first coincidence of the two in-phase curves. The displacement d corresponds to the wavelength λ of the sound wave.\n• Measure, by means of a graduated ruler, the distance d. Knowing that the frequency f = 1000 Hz, determine the speed of sound in air by applying the relation: v = λ f. You get a value about 340 ms⁻¹.",
+          "box": [
+            465,
+            107,
+            674,
+            576
+          ]
+        },
+        {
+          "type": "figure",
+          "text": "",
+          "box": [
+            445,
+            620,
+            661,
+            897
+          ]
+        },
+        {
+          "type": "footer",
+          "text": "51 Emission and Propagation of Sound",
+          "box": [
+            715,
+            473,
+            730,
+            772
+          ]
+        }
+      ],
+      "modelUsed": "gemini-3.6-flash"
+    },
+    {
+      "pageNumber": 5,
+      "title": "SUMMARY",
+      "text": "SUMMARY\n\n• The emission of sound is produced by the vibration of a material medium.\n• A portion of a circuit, traversed by an electric current, and placed in a magnetic field is subjected to a force called the electromagnetic force.\n• The direction of the electromagnetic force depends on that of the electric current, and on the direction of the magnet.\n• A loudspeaker converts an electrical signal into a mechanical one.\n• The frequency of the stimulating potential difference is equal to that of the sound emitted by the loudspeaker.\n• A sound wave, in air, is a longitudinal wave.\n• Sound does not propagate in vacuum. It propagates in solids, liquids, and gases.\n• The speed of sound in air, at ambient temperature, is approximately 340 ms⁻¹.\n• In solids, sound propagates faster than it does in gases.\n\n52 Emission and Propagation of Sound",
+      "confidence": 0.95,
+      "needsReview": false,
+      "reviewReason": null,
+      "sourceFrameIndices": [
+        9,
+        10
+      ],
+      "bestFrameIndex": 10,
+      "pageBox": [
+        48,
+        0,
+        920,
+        893
+      ],
+      "blocks": [
+        {
+          "type": "heading",
+          "text": "SUMMARY",
+          "level": 1,
+          "box": null
+        },
+        {
+          "type": "list",
+          "text": "",
+          "items": [
+            "The emission of sound is produced by the vibration of a material medium.",
+            "A portion of a circuit, traversed by an electric current, and placed in a magnetic field is subjected to a force called the electromagnetic force.",
+            "The direction of the electromagnetic force depends on that of the electric current, and on the direction of the magnet.",
+            "A loudspeaker converts an electrical signal into a mechanical one.",
+            "The frequency of the stimulating potential difference is equal to that of the sound emitted by the loudspeaker.",
+            "A sound wave, in air, is a longitudinal wave.",
+            "Sound does not propagate in vacuum. It propagates in solids, liquids, and gases.",
+            "The speed of sound in air, at ambient temperature, is approximately 340 ms⁻¹.",
+            "In solids, sound propagates faster than it does in gases."
+          ],
+          "box": null
+        },
+        {
+          "type": "footer",
+          "text": "52 Emission and Propagation of Sound",
+          "box": [
+            848,
+            452,
+            888,
+            788
+          ]
+        }
+      ],
+      "modelUsed": "gemini-3.6-flash"
+    }
+  ],
+  "selectedFrameCount": 11,
+  "discardedFrameCount": 0,
+  "processingNote": "Frames were filtered locally before Gemini checked their order, text, and confidence.",
+  "usage": {
+    "model": "gemini-3.6-flash",
+    "inputTokens": 13134,
+    "outputTokens": 4303,
+    "thinkingTokens": 3313
+  }
+}

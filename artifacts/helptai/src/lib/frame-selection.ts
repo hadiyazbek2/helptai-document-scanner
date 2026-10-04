@@ -17,6 +17,8 @@ export type SelectOptions = {
   repeatBelow?: number;
   // Seconds a backup frame must be from the others picked for the same view.
   backupGap?: number;
+  // Most backup frames a view may add to its main frame (0 gives one frame per view).
+  maxBackups?: number;
 };
 
 export type Selection = {
@@ -48,7 +50,7 @@ function percentile(values: number[], q: number) {
 // Splitting too much only costs an extra frame (the AI merges frames of one page); merging two
 // pages would lose one, so the rules lean towards splitting.
 export function selectBestFrames(samples: Sample[], options: SelectOptions): Selection {
-  const { step, maxFrames = 45, mergeBelow = 0.12, repeatBelow = 0.06, backupGap = 0.8 } = options;
+  const { step, maxFrames = 45, mergeBelow = 0.12, repeatBelow = 0.06, backupGap = 0.8, maxBackups = 2 } = options;
   if (!samples.length) return { chosen: [], views: [], minSharpness: 0 };
 
   const minSharpness = Math.max(0.15, Math.min(0.45, 0.3 * percentile(samples.map((s) => s.sharpness), 0.9)));
@@ -104,7 +106,7 @@ export function selectBestFrames(samples: Sample[], options: SelectOptions): Sel
 
     // Longer views get more candidates: each backup is the clearest frame that is at least
     // `backupGap` seconds from every frame already picked for this view.
-    const backups = view.length >= 10 ? 2 : view.length >= 5 ? 1 : 0;
+    const backups = Math.min(maxBackups, view.length >= 10 ? 2 : view.length >= 5 ? 1 : 0);
     const taken = [best];
     for (let rank = 1; rank <= backups; rank += 1) {
       const candidates = view.filter(

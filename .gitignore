@@ -45,3 +45,10 @@ Thumbs.db
 .env
 .env.*
 !.env.example
+
+# test data: keep the tables and summaries, not the heavy files
+data/videos/*.mp4
+data/videos/*.mov
+data/videos/*.m4v
+data/videos/*.webm
+data/runs/*/frames/
