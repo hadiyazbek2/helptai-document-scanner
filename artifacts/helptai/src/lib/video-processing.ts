@@ -54,8 +54,11 @@ type Sample = Moment & { hand: number; paperShare: number; tiny: Gray };
 
 export async function selectVideoFrames(
   file: File,
-  onProgress?: (message: string) => void,
-  options: { method?: 'auto' | 'seek'; onStats?: (stats: SelectionStats) => void } = {},
+  // `fraction` (0..1) is how far selection has got, for a progress bar.
+  onProgress?: (message: string, fraction?: number) => void,
+  // `signal`: aborting it stops the work (the user pressed cancel); the promise then rejects with
+  // an AbortError.
+  options: { method?: 'auto' | 'seek'; onStats?: (stats: SelectionStats) => void; signal?: AbortSignal } = {},
 ): Promise<SelectedFrame[]> {
   const source = await openVideo(file);
   const { video, duration } = source;
@@ -86,7 +89,11 @@ export async function selectVideoFrames(
       previousTiny = tiny;
       return sample;
     };
-    const progress = (count: number) => onProgress?.(`Looking at moment ${Math.min(count, total)} of ${total}…`);
+    // Reading the moments is ~90% of the work; preparing the chosen frames the rest.
+    const progress = (count: number) => {
+      throwIfCancelled(options.signal);
+      onProgress?.(`Looking at moment ${Math.min(count, total)} of ${total}…`, 0.9 * Math.min(1, count / total));
+    };
 
     // Playing the video is faster than jumping to every moment (seeking costs ~100 ms each);
     // browsers without frame callbacks, or where playback stalls, seek instead.
@@ -96,7 +103,8 @@ export async function selectVideoFrames(
       try {
         samples = await sampleByPlayback(video, step, duration, measure, progress);
         method = 'playback';
-      } catch {
+      } catch (error) {
+        if (isCancelled(error)) throw error;
         samples = [];
       }
     }
@@ -106,7 +114,7 @@ export async function selectVideoFrames(
       method = 'seeking';
     }
 
-    onProgress?.('Finding where each page starts and ends…');
+    onProgress?.('Finding where each page starts and ends…', 0.9);
     const cover = pageCover(samples);
     const segments = findPageSegments(
       samples.map((sample, i) => ({ ...sample, cover: cover[i] })),
@@ -132,7 +140,8 @@ export async function selectVideoFrames(
         extra,
         range,
       });
-      onProgress?.(`Preparing frame ${position + 1} of ${chosen.length}…`);
+      throwIfCancelled(options.signal);
+      onProgress?.(`Preparing frame ${position + 1} of ${chosen.length}…`, 0.9 + (0.1 * (position + 1)) / chosen.length);
     }
     options.onStats?.({
       videoSeconds: duration,
@@ -230,6 +239,14 @@ export async function openVideo(file: Blob): Promise<VideoSource> {
   }
 }
 
+export function isCancelled(error: unknown) {
+  return error instanceof DOMException && error.name === 'AbortError';
+}
+
+function throwIfCancelled(signal: AbortSignal | undefined) {
+  if (signal?.aborted) throw new DOMException('Cancelled', 'AbortError');
+}
+
 // Mean absolute difference of two same-sized grey copies: how much the picture changed.
 function meanDifference(a: Gray, b: Gray) {
   let total = 0;
@@ -269,8 +286,15 @@ async function sampleByPlayback<T>(
       watchdog = window.setTimeout(() => reject(new Error('Playback stalled.')), 5000);
       const time = metadata.mediaTime;
       if (time >= next - 1e-3) {
-        samples.push(measure(time));
-        progress(samples.length);
+        try {
+          samples.push(measure(time));
+          progress(samples.length);
+        } catch (error) {
+          // Cancelled (or a frame could not be read): stop here rather than inside the callback.
+          window.clearTimeout(watchdog);
+          reject(error);
+          return;
+        }
         while (next <= time) next += step; // never fall behind if frames were skipped
       }
       if (video.ended || time >= duration - 0.06) finish();

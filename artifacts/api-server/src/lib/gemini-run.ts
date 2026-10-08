@@ -41,6 +41,9 @@ export async function analyzeWith(
     models: string[];
     keyCount: number;
     onEvent?: (event: FallbackEvent) => void;
+    signal?: AbortSignal;
+    // Called before each try with the model and key (from 1), for progress messages.
+    onTry?: (model: string, key: number, tryNumber: number) => void;
   },
 ): Promise<{ pages: AnalyzedPage[]; model: string; keyIndex: number; usage: Usage; attempts: Attempt[] }> {
   let usage: RawResponse["usage"];
@@ -76,6 +79,11 @@ export async function analyzeWith(
     },
     {
       onEvent: options.onEvent,
+      signal: options.signal,
+      onStart: (target) => {
+        const { model, keyIndex } = parseTarget(target);
+        options.onTry?.(model, keyIndex + 1, attempts.length + 1);
+      },
       // Busy is per model, not per key: after one "high demand" answer, try the next model rather
       // than the same model on another key. Every attempt counts against the free tier's small
       // daily request limit, even a busy one, so retries are kept to a minimum.

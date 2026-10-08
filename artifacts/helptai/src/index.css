@@ -554,3 +554,7 @@
 .dev-info-request { display: grid; gap: .15rem; margin-top: .6rem; overflow-wrap: anywhere; }
 .dev-info-request strong { color: hsl(var(--foreground)); font-weight: 700; }
 .dev-info-tries { opacity: .85; }
+
+/* ---------- real progress ---------- */
+.progress-fill.progress-known { animation: none; transition: width .35s ease; }
+.processing-cancel { margin-top: .8rem; }

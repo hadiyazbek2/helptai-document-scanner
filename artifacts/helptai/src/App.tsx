@@ -25,7 +25,7 @@ import { PageReplica } from '@/components/page-replica';
 import { applyPatch, buildDoc, type Doc, type Page } from '@/lib/doc-model';
 import { prepareImage } from '@/lib/image';
 import { HAND_TAG } from '@/lib/page-segments';
-import { selectVideoFrames, type SelectedFrame, type SelectionStats } from '@/lib/video-processing';
+import { isCancelled, selectVideoFrames, type SelectedFrame, type SelectionStats } from '@/lib/video-processing';
 
 type View = 'home' | 'frames' | 'processing' | 'review' | 'patch';
 
@@ -191,16 +191,31 @@ function HomeView({
 function ProcessingView({
   documentName,
   status,
+  progress,
+  startedAt,
   error,
+  onCancel,
   onRetry,
   onReset,
 }: {
   documentName: string;
   status: string;
+  // How far along (0..1), or null while waiting for an answer of unknown length.
+  progress: number | null;
+  // When the current step started (ms), for the elapsed-time counter.
+  startedAt: number | null;
   error: string | null;
+  onCancel: (() => void) | null;
   onRetry: (() => void) | null;
   onReset: () => void;
 }) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (error || startedAt === null) return;
+    const timer = window.setInterval(() => setNow(Date.now()), 500);
+    return () => window.clearInterval(timer);
+  }, [error, startedAt]);
+  const elapsed = startedAt === null ? null : Math.max(0, Math.round((now - startedAt) / 1000));
   return (
     <main className="processing-shell" data-testid="view-processing">
       <div className="processing-orbit" aria-hidden="true">
@@ -211,10 +226,26 @@ function ProcessingView({
       <p>
         {error ?? 'helptai is looking for clear edges, readable text, and the natural order of your capture. You can leave this screen open.'}
       </p>
-      <div className="progress-track" aria-label="Processing document" data-testid="progress-processing">
-        <div className={`progress-fill${error ? ' progress-error' : ''}`} />
+      <div
+        className="progress-track"
+        role="progressbar"
+        aria-label="Processing document"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={progress === null || error ? undefined : Math.round(progress * 100)}
+        data-testid="progress-processing"
+      >
+        <div
+          className={`progress-fill${error ? ' progress-error' : progress === null ? ' progress-waiting' : ' progress-known'}`}
+          style={!error && progress !== null ? { width: `${Math.max(3, Math.round(progress * 100))}%` } : undefined}
+        />
       </div>
-      <span className="processing-note"><Film size={12} /> {status || documentName}</span>
+      <span className="processing-note" data-testid="text-processing-status">
+        <Film size={12} /> {status || documentName}{!error && elapsed !== null && elapsed >= 2 ? ` · ${elapsed} s` : ''}
+      </span>
+      {!error && onCancel && (
+        <button className="button button-quiet processing-cancel" onClick={onCancel} data-testid="button-processing-cancel">cancel</button>
+      )}
       {error && (
         <div className="processing-error-actions">
           {onRetry && <button className="button button-primary" onClick={onRetry} data-testid="button-processing-retry">try again</button>}
@@ -616,6 +647,37 @@ function RecordingModal({
   );
 }
 
+type ProgressEvent = { type: 'progress'; part: number; parts: number; frames?: number; model?: string; key?: number; try?: number };
+type DocumentPayload = Partial<ProcessDocumentResult> & { error?: string };
+
+// Reads the document answer. The server streams one JSON object per line (progress, then the
+// result or an error); a plain JSON answer (an early error, or an older server) works too.
+async function readDocumentResponse(response: Response, onProgress: (event: ProgressEvent) => void): Promise<DocumentPayload | null> {
+  const fallback = 'The document could not be analyzed.';
+  if (!(response.headers.get('Content-Type') ?? '').includes('application/x-ndjson') || !response.body) {
+    const payload = await response.json().catch(() => null) as DocumentPayload | null;
+    if (!response.ok) throw new Error(payload?.error || fallback);
+    return payload;
+  }
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  for (;;) {
+    const { value, done } = await reader.read();
+    buffer += decoder.decode(value, { stream: !done });
+    const lines = buffer.split('\n');
+    buffer = done ? '' : lines.pop() ?? '';
+    for (const line of lines) {
+      if (!line.trim()) continue;
+      const event = JSON.parse(line) as ProgressEvent | { type: 'result'; result: DocumentPayload } | { type: 'error'; error?: string };
+      if (event.type === 'progress') onProgress(event);
+      else if (event.type === 'result') return event.result;
+      else if (event.type === 'error') throw new Error(event.error || fallback);
+    }
+    if (done) throw new Error('The connection closed before the document was ready. Please try again.');
+  }
+}
+
 function App() {
   const [view, setView] = useState<View>('home');
   const [documentName, setDocumentName] = useState('Untitled document');
@@ -626,6 +688,10 @@ function App() {
   const [selectedPageNumber, setSelectedPageNumber] = useState(1);
   const [processingStatus, setProcessingStatus] = useState('Preparing your capture…');
   const [processingError, setProcessingError] = useState<string | null>(null);
+  const [processingProgress, setProcessingProgress] = useState<number | null>(null);
+  const [processingStartedAt, setProcessingStartedAt] = useState<number | null>(null);
+  // Cancels the step in progress (frame selection on the device, or the Gemini request).
+  const cancelRef = useRef<AbortController | null>(null);
   const [lastCapture, setLastCapture] = useState<File | null>(null);
   const [patchTarget, setPatchTarget] = useState<number | null>(null);
   const [patchBusy, setPatchBusy] = useState(false);
@@ -672,16 +738,34 @@ function App() {
     setSelectedPageNumber(1);
     setProcessingError(null);
     setProcessingStatus('Opening the capture…');
+    setProcessingProgress(0);
+    setProcessingStartedAt(Date.now());
     setView('processing');
 
+    const cancel = new AbortController();
+    cancelRef.current = cancel;
     try {
-      const frames = await selectVideoFrames(file, setProcessingStatus, { onStats: setSelectionStats });
+      const frames = await selectVideoFrames(
+        file,
+        (message, fraction) => {
+          setProcessingStatus(message);
+          if (fraction !== undefined) setProcessingProgress(fraction);
+        },
+        { onStats: setSelectionStats, signal: cancel.signal },
+      );
       if (!frames.length) throw new Error('No clear page frames were found in this video.');
       setSelectedFrames(frames);
       setProcessingStatus(`${frames.length} clear frames are ready to review.`);
       setView('frames');
     } catch (error) {
+      if (isCancelled(error)) {
+        setView('home');
+        setToast({ message: 'Stopped. Choose or record a video whenever you are ready.', tone: 'sage' });
+        return;
+      }
       setProcessingError(error instanceof Error ? error.message : 'The document could not be processed.');
+    } finally {
+      if (cancelRef.current === cancel) cancelRef.current = null;
     }
   };
 
@@ -689,18 +773,26 @@ function App() {
     if (!selectedFrames.length) return;
     setProcessingError(null);
     setProcessingStatus(`Sending ${selectedFrames.length} clear frames for text extraction…`);
+    setProcessingProgress(null);
+    setProcessingStartedAt(Date.now());
     setView('processing');
 
+    const cancel = new AbortController();
+    cancelRef.current = cancel;
     try {
       const response = await fetch('/api/process-document', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', Accept: 'application/x-ndjson' },
         body: JSON.stringify({ documentName, frames: selectedFrames }),
+        signal: cancel.signal,
       });
-      const payload = await response.json().catch(() => null) as (Partial<ProcessDocumentResult> & { error?: string }) | null;
-      if (!response.ok) {
-        throw new Error(payload?.error || 'The document could not be analyzed.');
-      }
+      const payload = await readDocumentResponse(response, (event) => {
+        const part = event.parts > 1 ? ` (part ${event.part} of ${event.parts})` : '';
+        if (event.parts > 1) setProcessingProgress((event.part - 1) / event.parts);
+        if (!event.model) setProcessingStatus(`Reading ${event.frames ?? selectedFrames.length} frames with Gemini${part}…`);
+        else if ((event.try ?? 1) > 1) setProcessingStatus(`Google is busy, trying another model${part}: ${event.model}…`);
+        else setProcessingStatus(`Reading your pages with ${event.model}${part}…`);
+      });
       if (!payload?.pages?.length) {
         throw new Error('No reconstructed pages were returned for this capture.');
       }
@@ -712,7 +804,14 @@ function App() {
       setProcessingStatus('Document reconstructed.');
       setView('review');
     } catch (error) {
+      if (isCancelled(error)) {
+        setView('frames');
+        setToast({ message: 'Stopped. Your frames are still here.', tone: 'sage' });
+        return;
+      }
       setProcessingError(error instanceof Error ? error.message : 'The document could not be processed.');
+    } finally {
+      if (cancelRef.current === cancel) cancelRef.current = null;
     }
   };
 
@@ -896,7 +995,7 @@ function App() {
             onReset={reset}
           />
         )}
-        {view === 'processing' && <ProcessingView documentName={documentName} status={processingStatus} error={processingError} onRetry={selectedFrames.length ? analyzeFrames : lastCapture ? () => void beginProcessing(lastCapture.name, lastCapture) : null} onReset={reset} />}
+        {view === 'processing' && <ProcessingView documentName={documentName} status={processingStatus} progress={processingProgress} startedAt={processingStartedAt} error={processingError} onCancel={() => cancelRef.current?.abort()} onRetry={selectedFrames.length ? analyzeFrames : lastCapture ? () => void beginProcessing(lastCapture.name, lastCapture) : null} onReset={reset} />}
         {view === 'review' && analysis && <ReviewView documentName={documentName} analysis={analysis} selectedPageNumber={selectedPageNumber} onSelectPage={setSelectedPageNumber} onPatch={openPatch} onPickFrame={lastCapture ? (pageNumber) => openPicker({ kind: 'page', pageNumber }) : null} onExport={handleExport} requests={requests} />}
         {view === 'patch' && analysis && patchTarget !== null && (
           <PatchView

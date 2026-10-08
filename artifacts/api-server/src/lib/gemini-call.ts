@@ -32,6 +32,14 @@ export class GeminiTimeoutError extends Error {
   }
 }
 
+// The user cancelled (closed the request); no further attempts are made.
+export class CancelledError extends Error {
+  constructor() {
+    super("Cancelled");
+    this.name = "CancelledError";
+  }
+}
+
 export class AllModelsFailedError extends Error {
   constructor(public failures: Array<{ model: string; kind: FailureKind }>) {
     super(
@@ -89,6 +97,10 @@ type Options = {
   // not the API key, so once a model has been busy `busyPerGroup` times its other keys are skipped.
   groupOf?: (target: string) => string;
   busyPerGroup?: number;
+  // Stops further attempts when aborted (the user cancelled).
+  signal?: AbortSignal;
+  // Called just before each attempt, for progress messages.
+  onStart?: (target: string) => void;
   baseDelayMs?: number;
   sleep?: (ms: number) => Promise<void>;
   now?: () => number;
@@ -106,6 +118,8 @@ export async function runWithModelFallback<T>(
     attemptsPerModel = 3,
     groupOf = (target) => target,
     busyPerGroup = Infinity,
+    signal,
+    onStart,
     baseDelayMs = 1500,
     sleep = (ms) => new Promise<void>((resolve) => setTimeout(resolve, ms)),
     now = Date.now,
@@ -126,11 +140,14 @@ export async function runWithModelFallback<T>(
 
     let lastKind: FailureKind = "transient";
     for (let attempt = 0; attempt < attemptsPerModel; attempt += 1) {
+      if (signal?.aborted) throw new CancelledError();
+      onStart?.(model);
       try {
         const result = await run(model);
         recentlyBusy.delete(group);
         return { result, model };
       } catch (error) {
+        if (signal?.aborted) throw new CancelledError();
         lastKind = classifyGeminiError(error);
         onEvent?.({ model, kind: lastKind, attempt, error });
         if (lastKind === "fatal") throw error;

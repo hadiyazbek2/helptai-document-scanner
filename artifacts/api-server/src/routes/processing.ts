@@ -4,7 +4,8 @@ import { ProcessDocumentBody, ProcessPageBody, type ErrorResponseCode } from "@h
 import { ThinkingLevel } from "@google/genai";
 import { clients } from "@helptai/integrations-gemini-ai";
 import { buildPagePrompt, buildPrompt, mainPage, RESPONSE_SCHEMA } from "../lib/analysis";
-import { AllModelsFailedError, GeminiTimeoutError } from "../lib/gemini-call";
+import { AllModelsFailedError, CancelledError, GeminiTimeoutError } from "../lib/gemini-call";
+import { planParts, readInParts } from "../lib/reconstruct";
 import { getModelChain } from "../lib/gemini-config";
 import { analyzeWith, buildParts, type GenerateFn, type PromptImage } from "../lib/gemini-run";
 import { appendUsage } from "../lib/usage-log";
@@ -38,7 +39,16 @@ function sendError(res: Response, code: ErrorResponseCode, message = MESSAGES[co
   res.status(STATUS[code]).json({ error: message, code });
 }
 
-type CallContext = { endpoint: string; requestId: string; document: string; frames: number; uploadKb: number; timeoutMs: number };
+type CallContext = {
+  endpoint: string;
+  requestId: string;
+  document: string;
+  frames: number;
+  uploadKb: number;
+  timeoutMs: number;
+  // Aborts the call in flight when the user cancels.
+  signal?: AbortSignal;
+};
 
 // How long one Gemini attempt may take before we give up on it and try the next model. Measured
 // successful calls: one page 14 s, an 8-page document 36-62 s.
@@ -82,6 +92,8 @@ function makeGenerate(prompt: string, images: PromptImage[], context: CallContex
       uploadKb: context.uploadKb,
     };
     const abort = new AbortController();
+    const stop = () => abort.abort();
+    context.signal?.addEventListener("abort", stop, { once: true });
     let timer: NodeJS.Timeout | undefined;
     const ask = (withThinking: boolean) =>
       clients[keyIndex].models.generateContent({
@@ -151,6 +163,7 @@ function makeGenerate(prompt: string, images: PromptImage[], context: CallContex
       throw error;
     } finally {
       clearTimeout(timer);
+      context.signal?.removeEventListener("abort", stop);
     }
   };
 }
@@ -176,33 +189,93 @@ router.post("/process-document", async (req, res) => {
     return;
   }
 
+  // The app asks for a stream of progress lines (NDJSON) so it can show what is happening and
+  // cancel; other callers (the eval tool) get one JSON answer as before.
+  const streaming = (req.headers.accept ?? "").includes("application/x-ndjson");
+  const send = (event: object) => {
+    if (streaming && !res.writableEnded) res.write(`${JSON.stringify(event)}\n`);
+  };
+  // Closing the request (the user pressed cancel) stops the Gemini call and any further tries.
+  const cancel = new AbortController();
+  res.on("close", () => {
+    if (!res.writableFinished) cancel.abort();
+  });
+  if (streaming) {
+    res.status(200).setHeader("Content-Type", "application/x-ndjson; charset=utf-8");
+    res.setHeader("Cache-Control", "no-cache");
+    res.flushHeaders();
+  }
+
   const started = Date.now();
+  const requestId = newRequestId();
+  const parts = planParts(frames.length);
   try {
-    const images = inlineFrames.flatMap((frame, index) =>
-      frame ? [{ ...frame, label: `Frame ${index + 1} (${frames[index].timestamp.toFixed(1)}s):` }] : [],
-    );
-    const { pages, model, keyIndex, usage, attempts } = await analyzeWith(
-      makeGenerate(buildPrompt(documentName, frames), images, {
-        endpoint: "process-document", requestId: newRequestId(), document: documentName, frames: frames.length, uploadKb: uploadKb(images), timeoutMs: DOCUMENT_TIMEOUT_MS,
-      }),
-      frames,
-      { models: getModelChain(), keyCount: clients.length, onEvent: logAttempt(req) },
-    );
-    req.log.info({ usage }, "Document analyzed");
+    const { pages, extras, failedParts } = await readInParts(parts, async (part, index) => {
+      const partFrames = frames.slice(part.from, part.to);
+      const images = inlineFrames.slice(part.from, part.to).flatMap((frame, i) =>
+        frame ? [{ ...frame, label: `Frame ${i + 1} (${partFrames[i].timestamp.toFixed(1)}s):` }] : [],
+      );
+      send({ type: "progress", part: index + 1, parts: parts.length, frames: partFrames.length });
+      const result = await analyzeWith(
+        makeGenerate(buildPrompt(documentName, partFrames), images, {
+          endpoint: "process-document", requestId, document: documentName, frames: partFrames.length, uploadKb: uploadKb(images),
+          timeoutMs: DOCUMENT_TIMEOUT_MS, signal: cancel.signal,
+        }),
+        partFrames,
+        {
+          models: getModelChain(),
+          keyCount: clients.length,
+          onEvent: logAttempt(req),
+          signal: cancel.signal,
+          onTry: (model, key, tryNumber) => send({ type: "progress", part: index + 1, parts: parts.length, model, key, try: tryNumber }),
+        },
+      );
+      return { pages: result.pages, extra: result };
+    });
+
+    const last = extras[extras.length - 1];
+    const usage = {
+      model: last.model,
+      inputTokens: extras.reduce((n, e) => n + e.usage.inputTokens, 0),
+      outputTokens: extras.reduce((n, e) => n + e.usage.outputTokens, 0),
+      thinkingTokens: extras.reduce((n, e) => n + e.usage.thinkingTokens, 0),
+      keyIndex: last.keyIndex + 1,
+      seconds: secondsSince(started),
+      attempts: extras.flatMap((e) => e.attempts),
+    };
+    req.log.info({ usage, parts: parts.length, failedParts }, "Document analyzed");
 
     const used = new Set(pages.flatMap((page) => page.sourceFrameIndices));
-    res.json({
+    const result = {
       documentName,
-      pages: pages.map((page) => ({ ...page, modelUsed: model })),
+      pages: pages.map((page) => ({ ...page, modelUsed: last.model })),
       selectedFrameCount: frames.length,
       discardedFrameCount: frames.length - used.size,
-      processingNote:
-        "Frames were filtered locally before Gemini checked their order, text, and confidence.",
-      usage: { ...usage, keyIndex: keyIndex + 1, seconds: secondsSince(started), attempts },
-    });
+      processingNote: failedParts
+        ? `${failedParts} of ${parts.length} parts of the capture could not be read; those pages are flagged.`
+        : "Frames were filtered locally before Gemini checked their order, text, and confidence.",
+      usage,
+    };
+    if (streaming) {
+      send({ type: "result", result });
+      res.end();
+    } else {
+      res.json(result);
+    }
   } catch (error) {
+    if (error instanceof CancelledError) {
+      req.log.info({ requestId }, "Document analysis cancelled");
+      if (!res.writableEnded) res.end();
+      return;
+    }
     req.log.error({ err: error }, "Document analysis failed");
-    sendError(res, errorCode(error));
+    if (streaming) {
+      const code = errorCode(error);
+      send({ type: "error", error: MESSAGES[code], code });
+      res.end();
+    } else {
+      sendError(res, errorCode(error));
+    }
   }
 });
 
