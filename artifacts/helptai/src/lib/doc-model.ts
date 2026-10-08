@@ -27,7 +27,11 @@ export type Page = {
 };
 
 export type Doc = {
+  // Stable identity, so a saved document can be updated, and later synced to an account.
+  id: string;
   name: string;
+  createdAt: number;
+  updatedAt: number;
   pages: Page[];
   selectedFrameCount: number;
   discardedFrameCount: number;
@@ -73,8 +77,12 @@ export function buildDoc(
       retakes: 0,
     };
   });
+  const now = Date.now();
   return {
+    id: newId(),
     name,
+    createdAt: now,
+    updatedAt: now,
     pages,
     selectedFrameCount: result.selectedFrameCount,
     discardedFrameCount: result.discardedFrameCount,
@@ -119,5 +127,12 @@ export function applyPatch(
       retakes: page.retakes + 1,
     };
   });
-  return { ...doc, pages };
+  return { ...doc, pages, updatedAt: Date.now() };
+}
+
+// A random id. crypto.randomUUID needs a secure page (https or localhost); the fallback covers the
+// rest (for example the dev server opened by its network address over plain http).
+export function newId() {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') return crypto.randomUUID();
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}${Math.random().toString(36).slice(2, 10)}`;
 }

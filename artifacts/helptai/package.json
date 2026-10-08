@@ -20,6 +20,7 @@
     "@vitejs/plugin-basic-ssl": "^2.3.0",
     "@vitejs/plugin-react": "^5.0.4",
     "@xmldom/xmldom": "^0.9.12",
+    "fake-indexeddb": "^6.2.5",
     "lucide-react": "^0.545.0",
     "react": "19.1.0",
     "react-dom": "19.1.0",

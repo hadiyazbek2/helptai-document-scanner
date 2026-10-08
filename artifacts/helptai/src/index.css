@@ -558,3 +558,22 @@
 /* ---------- real progress ---------- */
 .progress-fill.progress-known { animation: none; transition: width .35s ease; }
 .processing-cancel { margin-top: .8rem; }
+
+/* ---------- documents kept on this device ---------- */
+.recent-list { display: grid; gap: .6rem; margin: 0; padding: 0; list-style: none; }
+.recent-item { align-items: flex-start; }
+.recent-open { flex-shrink: 0; padding: 0; border: 0; background: none; cursor: pointer; }
+.recent-thumb { display: block; width: 2.9rem; height: 3.6rem; border: 1px solid var(--navy-line); border-radius: .45rem; object-fit: cover; background: #ebe8e0; }
+.recent-name-button { display: block; max-width: 100%; padding: 0; border: 0; background: none; text-align: left; cursor: pointer; font-family: inherit; }
+.recent-flag { color: #8a5a2b; }
+.recent-actions, .recent-confirm { display: flex; flex-wrap: wrap; align-items: center; gap: .2rem .85rem; margin-top: .45rem; }
+.recent-confirm span { color: hsl(var(--foreground)); font-size: .7rem; }
+.recent-link { display: inline-flex; align-items: center; gap: .25rem; padding: 0; border: 0; background: none; color: hsl(var(--muted-foreground)); font-size: .68rem; cursor: pointer; }
+.recent-link:hover, .recent-link-strong { color: hsl(var(--foreground)); font-weight: 700; text-decoration: underline; text-underline-offset: 2px; }
+.recent-rename { display: flex; align-items: center; gap: .3rem; }
+.recent-rename input { min-width: 0; flex: 1; padding: .3rem .45rem; border: 1px solid hsl(var(--input)); border-radius: .45rem; background: hsl(var(--card)); color: hsl(var(--foreground)); font: inherit; font-size: .8rem; }
+.recent-action { display: grid; place-items: center; width: 1.8rem; height: 1.8rem; border: 1px solid var(--navy-line); border-radius: .45rem; background: transparent; color: hsl(var(--foreground)); cursor: pointer; }
+.review-title-row { display: flex; align-items: center; gap: .5rem; }
+.review-rename { display: flex; align-items: center; gap: .35rem; margin-top: .35rem; }
+.review-rename input { min-width: 0; width: min(100%, 26rem); padding: .4rem .55rem; border: 1px solid hsl(var(--input)); border-radius: .55rem; background: hsl(var(--card)); color: hsl(var(--foreground)); font-family: var(--app-font-serif); font-size: 1.4rem; }
+.saved-note { color: hsl(var(--muted-foreground)); font-size: .68rem; }

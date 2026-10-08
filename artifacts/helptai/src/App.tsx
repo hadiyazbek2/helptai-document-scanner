@@ -8,9 +8,9 @@ import {
   CircleStop,
   FileText,
   Film,
-  FolderOpen,
   ImagePlus,
   LoaderCircle,
+  Pencil,
   Presentation,
   ScanLine,
   Sparkles,
@@ -21,6 +21,8 @@ import {
 import { downloadDocx, downloadPdf, downloadPptx } from '@/lib/export';
 import type { ProcessDocumentResult, ProcessPageResult, Usage } from '@helptai/api-client-react';
 import { FramePicker, type PickedFrame } from '@/components/frame-picker';
+import { RecentDocuments } from '@/components/recent-documents';
+import { askToKeepStorage, deleteDoc, isQuotaError, listDocs, loadDoc, removeVideo, renameDoc, saveDoc, type DocSummary } from '@/lib/doc-store';
 import { PageReplica } from '@/components/page-replica';
 import { applyPatch, buildDoc, type Doc, type Page } from '@/lib/doc-model';
 import { prepareImage } from '@/lib/image';
@@ -102,11 +104,19 @@ function Toast({ message, tone }: { message: string; tone: ToastTone }) {
 function HomeView({
   onCamera,
   onFile,
-  recentName,
+  docs,
+  onOpen,
+  onRename,
+  onRemoveVideo,
+  onDelete,
 }: {
   onCamera: () => void;
   onFile: (file: File) => void;
-  recentName: string | null;
+  docs: DocSummary[] | null;
+  onOpen: (id: string) => void;
+  onRename: (id: string, name: string) => void;
+  onRemoveVideo: (id: string) => void;
+  onDelete: (id: string) => void;
 }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -165,24 +175,7 @@ function HomeView({
           <h2 className="section-title" id="recent-heading">recently made</h2>
           <span className="section-kicker">kept on this device</span>
         </div>
-        {recentName ? (
-          <div className="recent-card" data-testid="card-recent-document">
-            <div className="recent-icon"><FileText size={17} /></div>
-            <div className="recent-meta">
-              <div className="recent-name" data-testid="text-recent-document-name">{recentName}</div>
-              <div className="recent-time">just now · 12 pages</div>
-            </div>
-            <span className="status-done" data-testid="status-recent-ready">ready</span>
-          </div>
-        ) : (
-          <div className="recent-card" data-testid="empty-recent-documents">
-            <div className="recent-icon"><FolderOpen size={17} /></div>
-            <div className="recent-meta">
-              <div className="recent-name">your next document will live here</div>
-              <div className="recent-time">nothing saved yet</div>
-            </div>
-          </div>
-        )}
+        <RecentDocuments docs={docs} onOpen={onOpen} onRename={onRename} onRemoveVideo={onRemoveVideo} onDelete={onDelete} />
       </section>
     </>
   );
@@ -388,6 +381,8 @@ function ReviewView({
   onPickFrame,
   onExport,
   requests,
+  onRename,
+  savedNote,
 }: {
   documentName: string;
   analysis: Doc;
@@ -398,7 +393,11 @@ function ReviewView({
   onPickFrame: ((pageNumber: number) => void) | null;
   onExport: (format: string) => void;
   requests: RequestInfo[];
+  onRename: (name: string) => void;
+  // Whether the document is kept on this device, in a few words.
+  savedNote: string | null;
 }) {
+  const [renaming, setRenaming] = useState<string | null>(null);
   const selectedPage = analysis.pages.find((page) => page.pageNumber === selectedPageNumber) ?? analysis.pages[0] ?? null;
   const flagged = analysis.pages.filter((page) => page.status === 'needs-review');
   const retaken = analysis.pages.filter((page) => page.retakes > 0 && page.status !== 'needs-review');
@@ -408,8 +407,37 @@ function ReviewView({
       <div className="review-header">
         <div>
           <span className="eyebrow">document ready</span>
-          <h1>{documentName}</h1>
+          {renaming === null ? (
+            <div className="review-title-row">
+              <h1 data-testid="text-document-name">{documentName}</h1>
+              <button className="recent-action" onClick={() => setRenaming(documentName)} aria-label="Rename this document" data-testid="button-rename-open-document">
+                <Pencil size={14} />
+              </button>
+            </div>
+          ) : (
+            <form
+              className="review-rename"
+              onSubmit={(event) => {
+                event.preventDefault();
+                const name = renaming.trim();
+                if (name && name !== documentName) onRename(name);
+                setRenaming(null);
+              }}
+            >
+              <input
+                autoFocus
+                value={renaming}
+                maxLength={160}
+                onChange={(event) => setRenaming(event.target.value)}
+                onKeyDown={(event) => event.key === 'Escape' && setRenaming(null)}
+                aria-label="Document name"
+                data-testid="input-rename-open-document"
+              />
+              <button type="submit" className="recent-action" aria-label="Save name"><Check size={15} /></button>
+            </form>
+          )}
           <p>{analysis.pages.length} pages found · {analysis.selectedFrameCount} clear frames kept from your capture</p>
+          {savedNote && <p className="saved-note" data-testid="text-saved-note">{savedNote}</p>}
         </div>
         <span className="ready-badge" data-testid="status-document-ready"><Check size={13} /> ready</span>
       </div>
@@ -681,7 +709,9 @@ async function readDocumentResponse(response: Response, onProgress: (event: Prog
 function App() {
   const [view, setView] = useState<View>('home');
   const [documentName, setDocumentName] = useState('Untitled document');
-  const [recentName, setRecentName] = useState<string | null>(null);
+  // Documents kept on this device (null while loading), and whether the open one is saved.
+  const [docs, setDocs] = useState<DocSummary[] | null>(null);
+  const [savedNote, setSavedNote] = useState<string | null>(null);
   const [analysis, setAnalysis] = useState<Doc | null>(null);
   const [selectedFrames, setSelectedFrames] = useState<SelectedFrame[]>([]);
   const [selectionStats, setSelectionStats] = useState<SelectionStats | null>(null);
@@ -800,6 +830,7 @@ function App() {
       setRequests([]);
       noteRequest(`whole document · ${selectedFrames.length} frames`, payload.usage);
       setAnalysis(result);
+      void persist(result, lastCapture);
       setSelectedPageNumber(result.pages.find((page) => page.status === 'needs-review')?.pageNumber ?? result.pages[0].pageNumber);
       setProcessingStatus('Document reconstructed.');
       setView('review');
@@ -873,7 +904,6 @@ function App() {
     setCameraOpen(false);
     setRecording(false);
     setView('home');
-    setRecentName(null);
     setAnalysis(null);
     setLastCapture(null);
     setSelectedFrames([]);
@@ -921,6 +951,7 @@ function App() {
     const next = applyPatch(doc, pageNumber, payload.page, image, videoAt);
     const page = next.pages.find((candidate) => candidate.pageNumber === pageNumber);
     setAnalysis(next);
+    void persist(next);
     setSelectedPageNumber(pageNumber);
     const label = String(pageNumber).padStart(2, '0');
     setToast(page?.status === 'patched'
@@ -976,15 +1007,109 @@ function App() {
   const pickerPage = picker?.kind === 'page' ? analysis?.pages.find((page) => page.pageNumber === picker.pageNumber) ?? null : null;
   const pickerRange = pickerFrame?.range ?? (pickerPage?.video ? { from: pickerPage.video.from, to: pickerPage.video.to } : null);
 
+  const refreshDocs = () =>
+    listDocs()
+      .then(setDocs)
+      .catch(() => setDocs([]));
+
   useEffect(() => {
-    if (view === 'review') setRecentName(documentName);
-  }, [view, documentName]);
+    if (view === 'home') void refreshDocs();
+  }, [view]);
+
+  // Keeps the document on this device. `video`: the capture to keep with it (undefined leaves the
+  // kept one as it is). Saving never blocks the user: a failure is reported calmly.
+  const persist = async (doc: Doc, video?: File | null) => {
+    try {
+      const { videoKept } = await saveDoc(doc, { video, videoName: video?.name });
+      void askToKeepStorage();
+      setSavedNote(videoKept ? 'kept on this device, with its video' : 'kept on this device');
+      if (video && !videoKept) {
+        setToast({ message: 'Saved on this device, but there was no room for the video. Choosing other frames from it will not be possible later.', tone: 'amber' });
+      }
+    } catch (error) {
+      setSavedNote('not saved on this device');
+      setToast({
+        message: isQuotaError(error)
+          ? 'This device is out of space, so the document was not saved. Free some space or delete an older document.'
+          : 'The document could not be saved on this device. You can still export it.',
+        tone: 'amber',
+      });
+    }
+  };
+
+  const openDocument = async (id: string) => {
+    try {
+      const stored = await loadDoc(id);
+      if (!stored) {
+        setToast({ message: 'That document is no longer on this device.', tone: 'amber' });
+        void refreshDocs();
+        return;
+      }
+      const { doc, video } = stored;
+      setAnalysis(doc);
+      setDocumentName(doc.name);
+      setLastCapture(video);
+      setSelectedFrames([]);
+      setSelectionStats(null);
+      setRequests([]);
+      setPatchTarget(null);
+      setPicker(null);
+      setSavedNote(video ? 'kept on this device, with its video' : 'kept on this device');
+      setSelectedPageNumber(doc.pages.find((page) => page.status === 'needs-review')?.pageNumber ?? doc.pages[0]?.pageNumber ?? 1);
+      setView('review');
+    } catch {
+      setToast({ message: 'That document could not be opened.', tone: 'amber' });
+    }
+  };
+
+  const renameDocument = async (id: string, name: string) => {
+    try {
+      await renameDoc(id, name);
+      if (analysis?.id === id) {
+        setAnalysis({ ...analysis, name });
+        setDocumentName(name);
+      }
+      void refreshDocs();
+    } catch {
+      setToast({ message: 'The new name could not be saved.', tone: 'amber' });
+    }
+  };
+
+  const deleteDocument = async (id: string) => {
+    try {
+      await deleteDoc(id);
+      setToast({ message: 'Document deleted from this device.', tone: 'sage' });
+    } catch {
+      setToast({ message: 'That document could not be deleted.', tone: 'amber' });
+    }
+    void refreshDocs();
+  };
+
+  const removeDocumentVideo = async (id: string) => {
+    try {
+      await removeVideo(id);
+      setToast({ message: 'Video removed. The pages are still here.', tone: 'sage' });
+    } catch {
+      setToast({ message: 'The video could not be removed.', tone: 'amber' });
+    }
+    void refreshDocs();
+  };
 
   return (
     <div className="app-shell">
       <div className="page-wrap">
         <BrandHeader onReset={reset} />
-        {view === 'home' && <HomeView onCamera={startCamera} onFile={handleFile} recentName={recentName} />}
+        {view === 'home' && (
+          <HomeView
+            onCamera={startCamera}
+            onFile={handleFile}
+            docs={docs}
+            onOpen={(id) => void openDocument(id)}
+            onRename={(id, name) => void renameDocument(id, name)}
+            onRemoveVideo={(id) => void removeDocumentVideo(id)}
+            onDelete={(id) => void deleteDocument(id)}
+          />
+        )}
         {view === 'frames' && (
           <FrameReviewView
             documentName={documentName}
@@ -996,7 +1121,7 @@ function App() {
           />
         )}
         {view === 'processing' && <ProcessingView documentName={documentName} status={processingStatus} progress={processingProgress} startedAt={processingStartedAt} error={processingError} onCancel={() => cancelRef.current?.abort()} onRetry={selectedFrames.length ? analyzeFrames : lastCapture ? () => void beginProcessing(lastCapture.name, lastCapture) : null} onReset={reset} />}
-        {view === 'review' && analysis && <ReviewView documentName={documentName} analysis={analysis} selectedPageNumber={selectedPageNumber} onSelectPage={setSelectedPageNumber} onPatch={openPatch} onPickFrame={lastCapture ? (pageNumber) => openPicker({ kind: 'page', pageNumber }) : null} onExport={handleExport} requests={requests} />}
+        {view === 'review' && analysis && <ReviewView documentName={documentName} analysis={analysis} selectedPageNumber={selectedPageNumber} onSelectPage={setSelectedPageNumber} onPatch={openPatch} onPickFrame={lastCapture ? (pageNumber) => openPicker({ kind: 'page', pageNumber }) : null} onExport={handleExport} requests={requests} onRename={(name) => analysis && void renameDocument(analysis.id, name)} savedNote={savedNote} />}
         {view === 'patch' && analysis && patchTarget !== null && (
           <PatchView
             key={patchTarget}
