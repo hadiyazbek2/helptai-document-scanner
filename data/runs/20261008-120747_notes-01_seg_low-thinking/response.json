@@ -1,0 +1,363 @@
+{
+  "documentName": "notes-01",
+  "pages": [
+    {
+      "pageNumber": 1,
+      "title": "Data transfer Instructions",
+      "text": "Data transfer Instructions:\nMove destination, source\nSource can be register, memory location,\nimmediate operand\nboth can't be memory location at the same time\nstack operations:\nPush AX - Pop AX - Pusha AX - Popa AX\nAX can be any register, memory location\naddress transfer:\nLEA register, Source\nLEA Bx, [DI] <-> mov Bx, offset [DI]\nTo Get the address of DI \"first char\" and store it in BX\nArithmetic Instructions:\n- ADD destination, Source\nwith add operation we can add byte to byte or word to word. Like\nADD Ax, cx <-> Its correct\nADD CL, DL <-> Its correct\nbyte to word is wrong\n8 bits 16 bits\nI/ Carry flag CF=1 then active\n- ADC AX, LSL <-> AX = AX + LSL + I\n- INC source: increase register or source by 1\nif Ax=8 INC Ax -> Ax=9\n- AAA -> It correct the content of AL\nFor Subtraction:\n- SUB Destination, source\nSUB AX, 4H -> Ax = Ax - 4H\n- DEC source: decrease source by 1\n- NEG source: change the sign of the source (opposite sign)",
+      "confidence": 0.88,
+      "needsReview": false,
+      "reviewReason": null,
+      "sourceFrameIndices": [
+        0
+      ],
+      "bestFrameIndex": 0,
+      "pageBox": [
+        90,
+        31,
+        794,
+        995
+      ],
+      "blocks": [
+        {
+          "type": "lines",
+          "text": "Data transfer Instructions:\nMove destination, source\nSource can be register, memory location,\nimmediate operand\nboth can't be memory location at the same time\nstack operations:\nPush AX - Pop AX - Pusha AX - Popa AX\nAX can be any register, memory location\naddress transfer:\nLEA register, Source\nLEA Bx, [DI] <-> mov Bx, offset [DI]\nTo Get the address of DI \"first char\" and store it in BX\nArithmetic Instructions:\n- ADD destination, Source\nwith add operation we can add byte to byte or word to word. Like\nADD Ax, cx <-> Its correct\nADD CL, DL <-> Its correct\nbyte to word is wrong\n8 bits 16 bits\nI/ Carry flag CF=1 then active\n- ADC AX, LSL <-> AX = AX + LSL + I\n- INC source: increase register or source by 1\nif Ax=8 INC Ax -> Ax=9\n- AAA -> It correct the content of AL\nFor Subtraction:\n- SUB Destination, source\nSUB AX, 4H -> Ax = Ax - 4H\n- DEC source: decrease source by 1\n- NEG source: change the sign of the source (opposite sign)",
+          "box": [
+            117,
+            72,
+            761,
+            885
+          ]
+        }
+      ],
+      "modelUsed": "gemini-3.5-flash"
+    },
+    {
+      "pageNumber": 2,
+      "title": "I2207 - SBB, CMP, MUL",
+      "text": "I2207 (2) 11.5.2025\n\n- SBB destination, source: Subtract with Borrow/carry\nLike if the Carry flag CF = 1 it decrement the\nanswer by 1\n& Mov AX, 12H / first we make AX = 12 H\nSCF / this change the value of CF from 0 to 1\nSBB AX, 5 / subtract Ax - (1x + 5) = 6 H\n- CMP destination, source : Compare two specific\nbytes of words and do an instruction according\nto the result\nCMP AX, 7H / this compares AX with 7 by subtracting them\nJNZ end; / if not zero jump to end\nFor multiplication:\n- MUL source: it multiply byte by byte or word by word\n1. if source is 1 byte then AL is\nmultiplied by it and stored in AX\n2. if source is word then Ax is\nmultiplied by it and stored in DX:AX\n(DX is upper) (AX is lower)\n- IMUL source:\nSame as MUL but it consider signs\nFor Division:\n- DIV source: it divides word by byte or double-word by word\nif source is 1 byte, AX is divided by source and\nquotient = AL & remainder = AH",
+      "confidence": 0.9,
+      "needsReview": false,
+      "reviewReason": null,
+      "sourceFrameIndices": [
+        1
+      ],
+      "bestFrameIndex": 1,
+      "pageBox": [
+        119,
+        0,
+        866,
+        1000
+      ],
+      "blocks": [
+        {
+          "type": "header",
+          "text": "I2207 (2) 11.5.2025",
+          "box": [
+            128,
+            137,
+            166,
+            953
+          ]
+        },
+        {
+          "type": "lines",
+          "text": "- SBB destination, source: Subtract with Borrow/carry\nLike if the Carry flag CF = 1 it decrement the\nanswer by 1\n& Mov AX, 12H / first we make AX = 12 H\nSCF / this change the value of CF from 0 to 1\nSBB AX, 5 / subtract Ax - (1x + 5) = 6 H\n- CMP destination, source : Compare two specific\nbytes of words and do an instruction according\nto the result\nCMP AX, 7H / this compares AX with 7 by subtracting them\nJNZ end; / if not zero jump to end\nFor multiplication:\n- MUL source: it multiply byte by byte or word by word\n1. if source is 1 byte then AL is\nmultiplied by it and stored in AX\n2. if source is word then Ax is\nmultiplied by it and stored in DX:AX\n(DX is upper) (AX is lower)\n- IMUL source:\nSame as MUL but it consider signs\nFor Division:\n- DIV source: it divides word by byte or double-word by word\nif source is 1 byte, AX is divided by source and\nquotient = AL & remainder = AH",
+          "box": [
+            185,
+            130,
+            807,
+            981
+          ]
+        }
+      ],
+      "modelUsed": "gemini-3.5-flash"
+    },
+    {
+      "pageNumber": 3,
+      "title": "Division and variable declaration",
+      "text": "if source is word, (DX:AX) is divided by source,\nand AX = quotient DX = remainder\n- IDIV: it is signed division instruction\nVariable declaration in assembly:\nDB: Define byte (8 bits) / x db ? (uninitialized variable)\nDW: Define word (16 bits) / x dw 5 Y db 3\nDD: Define double word (32 bits)\nDP: 6 bits\nDQ: Define Quad word (64 bits)\nRead/Input Variables:\nTo enter a character with the keyboard we do:\nMov AH, 1 -> the function 1 is to read character\nint 21h -> interrupt 21h\nThe input is stored in AL. And the number is stored\nas a character to use it as a number:\nSub AL, 48 OR sub AL, '0'\nmov AH, 7 / when we use 7 it read but\nint 21h / it does not display character we entered\nWrite or Display:\nmov DL, 'A' / you move the character you want\nmov AH, 2 / to display to DL and then do this\nint 21h / we can read only one digit at a time\nDisplay a message:\nmov DX, offset variable or Lea DX, variable\nmov ah, 9 -> to display a message\nint 21h",
+      "confidence": 0.88,
+      "needsReview": false,
+      "reviewReason": null,
+      "sourceFrameIndices": [
+        2
+      ],
+      "bestFrameIndex": 2,
+      "pageBox": [
+        180,
+        77,
+        856,
+        995
+      ],
+      "blocks": [
+        {
+          "type": "lines",
+          "text": "if source is word, (DX:AX) is divided by source,\nand AX = quotient DX = remainder\n- IDIV: it is signed division instruction\nVariable declaration in assembly:\nDB: Define byte (8 bits) / x db ? (uninitialized variable)\nDW: Define word (16 bits) / x dw 5 Y db 3\nDD: Define double word (32 bits)\nDP: 6 bits\nDQ: Define Quad word (64 bits)\nRead/Input Variables:\nTo enter a character with the keyboard we do:\nMov AH, 1 -> the function 1 is to read character\nint 21h -> interrupt 21h\nThe input is stored in AL. And the number is stored\nas a character to use it as a number:\nSub AL, 48 OR sub AL, '0'\nmov AH, 7 / when we use 7 it read but\nint 21h / it does not display character we entered\nWrite or Display:\nmov DL, 'A' / you move the character you want\nmov AH, 2 / to display to DL and then do this\nint 21h / we can read only one digit at a time\nDisplay a message:\nmov DX, offset variable or Lea DX, variable\nmov ah, 9 -> to display a message\nint 21h",
+          "box": [
+            207,
+            131,
+            809,
+            897
+          ]
+        }
+      ],
+      "modelUsed": "gemini-3.5-flash"
+    },
+    {
+      "pageNumber": 4,
+      "title": "If, else Condition and Logical Instructions",
+      "text": "I2207 (3) 17.5.2025\n\n- If, else Condition:\nwe use cmp to solve if-else in assembly\ncmp source, destination / to get the result of cmp then\njxy address of Lable / jump to address of Lable\njl: jump if less, jle: jump if less or equal, jc: jump if carry\njne: jump if not equal, jg: jump if greater, jge: jump if greater\nor equal, jnz: jump if not equal zero, jz: jump if equal zero\nIf we need to use jump without any condition we\nuse jmp address of Lable\nLogical instructions:\n- Not source: convert all the bits in a byte or\nword ex. 00110110 -> 11001001\n- And destination, source: do and operation over all bits\n- OR destination, source: or operation on bits\n- XOR destination, source: xor operation on bits\nif you have trouble understanding this check page 5, week 3\nShift instruction:\n- SHL destination, count (shift left)\nIt moves the most left bit to AL=10110110 -> SHL AL, 1\nthe left and add zero at 01101100 -> CF=1\nthe beginning and add the moved bit in CF\n- SHR destination, count (shift right)\nsame as SHL but in the other direction / Like AL=10010111\nSHR res=01001011 CF=1",
+      "confidence": 0.9,
+      "needsReview": false,
+      "reviewReason": null,
+      "sourceFrameIndices": [
+        3
+      ],
+      "bestFrameIndex": 3,
+      "pageBox": [
+        146,
+        0,
+        843,
+        920
+      ],
+      "blocks": [
+        {
+          "type": "header",
+          "text": "I2207 (3) 17.5.2025",
+          "box": [
+            164,
+            131,
+            198,
+            866
+          ]
+        },
+        {
+          "type": "lines",
+          "text": "- If, else Condition:\nwe use cmp to solve if-else in assembly\ncmp source, destination / to get the result of cmp then\njxy address of Lable / jump to address of Lable\njl: jump if less, jle: jump if less or equal, jc: jump if carry\njne: jump if not equal, jg: jump if greater, jge: jump if greater\nor equal, jnz: jump if not equal zero, jz: jump if equal zero\nIf we need to use jump without any condition we\nuse jmp address of Lable\nLogical instructions:\n- Not source: convert all the bits in a byte or\nword ex. 00110110 -> 11001001\n- And destination, source: do and operation over all bits\n- OR destination, source: or operation on bits\n- XOR destination, source: xor operation on bits\nif you have trouble understanding this check page 5, week 3\nShift instruction:\n- SHL destination, count (shift left)\nIt moves the most left bit to AL=10110110 -> SHL AL, 1\nthe left and add zero at 01101100 -> CF=1\nthe beginning and add the moved bit in CF\n- SHR destination, count (shift right)\nsame as SHL but in the other direction / Like AL=10010111\nSHR res=01001011 CF=1",
+          "box": [
+            203,
+            90,
+            808,
+            893
+          ]
+        }
+      ],
+      "modelUsed": "gemini-3.5-flash"
+    },
+    {
+      "pageNumber": 5,
+      "title": "Shift Arithmetic and Loops",
+      "text": "- SAR source, count (shift Arithmetic right)\nwe add the new bit according to AL=10111001\nthe sign of the number, if it is negative SAR AL, 3\nit starts and adds 1s else it add 0s AL=11110111\n- SAL destination, count (shift arithmetic left)\nSame as SAR\nRotate instruction:\n- Rol destination, count (Rotate left)\nit rotate the bits in a byte or word / Ax=10110111\nso the left bit become the right and Rol Bx, 1\nit is also added to the CF also -> 01101111 CF=1\n- RoR destination, count (Rotate right)\nSame as Rol\n- RCL destination, count (Rotate through carry Left)\nIn this instruction the first left bit is stored in the CF and the previous CF is added as the first right bit\n- RCR\nSame as RCL\nLoop:\n- for: cmp cl, 4\njg end loop\nadd s, cl\ninc cl\njmp for\nend loop:\n- while: cmp si, 4\njg endwhile\nadd s, si\ninc si\njmp while\nend while:",
+      "confidence": 0.89,
+      "needsReview": false,
+      "reviewReason": null,
+      "sourceFrameIndices": [
+        4
+      ],
+      "bestFrameIndex": 4,
+      "pageBox": [
+        193,
+        44,
+        876,
+        995
+      ],
+      "blocks": [
+        {
+          "type": "lines",
+          "text": "- SAR source, count (shift Arithmetic right)\nwe add the new bit according to AL=10111001\nthe sign of the number, if it is negative SAR AL, 3\nit starts and adds 1s else it add 0s AL=11110111\n- SAL destination, count (shift arithmetic left)\nSame as SAR\nRotate instruction:\n- Rol destination, count (Rotate left)\nit rotate the bits in a byte or word / Ax=10110111\nso the left bit become the right and Rol Bx, 1\nit is also added to the CF also -> 01101111 CF=1\n- RoR destination, count (Rotate right)\nSame as Rol\n- RCL destination, count (Rotate through carry Left)\nIn this instruction the first left bit is stored in the CF and the previous CF is added as the first right bit\n- RCR\nSame as RCL\nLoop:\n- for: cmp cl, 4\njg end loop\nadd s, cl\ninc cl\njmp for\nend loop:\n- while: cmp si, 4\njg endwhile\nadd s, si\ninc si\njmp while\nend while:",
+          "box": [
+            215,
+            110,
+            834,
+            893
+          ]
+        }
+      ],
+      "modelUsed": "gemini-3.5-flash"
+    },
+    {
+      "pageNumber": 6,
+      "title": "Propositional Logic and Semantic Tableaux",
+      "text": "I2209 (1) 19.5.2025\n\nProposition: can be writen \"p,q,r...\" and it is a proposed statement\nLogical connections:\n- And (&): add two propositions and it is true when both are true\n- or (v): will be true if either p or q are true\n- if-then (->): if p true then q should be true \"called implies\"\n- If and only if (<->): this is true when p and q are the\nsame either true or false\n- Negation - Not (~):\nTautologies & consistency:\n- Tautology iff V(A) = T with any formula\n- consistent iff V(A) = T for one where it is true\n- inconsistent iff V(A) = F for all\nLogical consequence: A |= B iff V(A) = T then V(B) = T\nLogical equivalences: A == B iff A |= B and B |= A\n* Page 39 in pdf for memorize (the last one rule in both columns are True?)\nNote: |= (tautology)\n|= (logical consequence)\nSemantic Tableau system:\n\n~ | ^ | v | -> | <->\n~ ~ p\n------\np | p ^ q\n-----\np\nq | p v q\n-----\n/ \\\np   q | p -> q\n------\n/ \\\n~p  q | p <-> q\n-------\n/   \\\np     ~p\nq     ~q\n | ~(p ^ q)\n--------\n/ \\\n~p  ~q | ~(p v q)\n--------\n~\np\n~\nq | ~(p -> q)\n---------\np\n~q | ~(p <-> q)\n----------\n/ \\\np  ~p\n~q  q\n\nIt is better to start with stack first\nSet is inconsistent if all branches close\nSet is consistent if at least one branch is open",
+      "confidence": 0.85,
+      "needsReview": true,
+      "reviewReason": "Hand partially covers lower semantic tableaux in frame 7; frame 6 is clear but slightly low contrast.",
+      "sourceFrameIndices": [
+        5,
+        6
+      ],
+      "bestFrameIndex": 5,
+      "pageBox": [
+        140,
+        0,
+        846,
+        915
+      ],
+      "blocks": [
+        {
+          "type": "header",
+          "text": "I2209 (1) 19.5.2025",
+          "box": [
+            152,
+            75,
+            189,
+            845
+          ]
+        },
+        {
+          "type": "lines",
+          "text": "Proposition: can be writen \"p,q,r...\" and it is a proposed statement\nLogical connections:\n- And (&): add two propositions and it is true when both are true\n- or (v): will be true if either p or q are true\n- if-then (->): if p true then q should be true \"called implies\"\n- If and only if (<->): this is true when p and q are the\nsame either true or false\n- Negation - Not (~):\nTautologies & consistency:\n- Tautology iff V(A) = T with any formula\n- consistent iff V(A) = T for one where it is true\n- inconsistent iff V(A) = F for all\nLogical consequence: A |= B iff V(A) = T then V(B) = T\nLogical equivalences: A == B iff A |= B and B |= A\n* Page 39 in pdf for memorize (the last one rule in both columns are True?)\nNote: |= (tautology)\n|= (logical consequence)\nSemantic Tableau system:",
+          "box": [
+            199,
+            58,
+            574,
+            856
+          ]
+        },
+        {
+          "type": "table",
+          "text": "",
+          "rows": [
+            [
+              "~",
+              "^",
+              "v",
+              "->",
+              "<->"
+            ],
+            [
+              "~ ~ p\n------\np",
+              "p ^ q\n-----\np\nq",
+              "p v q\n-----\n/ \\\np   q",
+              "p -> q\n------\n/ \\\n~p  q",
+              "p <-> q\n-------\n/   \\\np     ~p\nq     ~q"
+            ],
+            [
+              "",
+              "~(p ^ q)\n--------\n/ \\\n~p  ~q",
+              "~(p v q)\n--------\n~\np\n~\nq",
+              "~(p -> q)\n---------\np\n~q",
+              "~(p <-> q)\n----------\n/ \\\np  ~p\n~q  q"
+            ]
+          ],
+          "box": null
+        },
+        {
+          "type": "lines",
+          "text": "It is better to start with stack first\nSet is inconsistent if all branches close\nSet is consistent if at least one branch is open",
+          "box": [
+            735,
+            41,
+            807,
+            882
+          ]
+        }
+      ],
+      "modelUsed": "gemini-3.5-flash"
+    },
+    {
+      "pageNumber": 7,
+      "title": "Rules of inference and Resolution",
+      "text": "branch is closed if there is x & ~x in the same root.\nRules of inference:\n- Modus Ponens (law of detachment - mode that affirms):\nif a conditional statement and its hypothesis are true\nthen the conclusion must also be true\np -> q -> condition statement\np -> hypothesis\n.: q -> therefore evaluation\nImportant table page 72 (Rules of inference)\n- Satisfiability (SAT) and Propositional resolution\np -> q\nq -> r\n------\n.: p -> r\nliteral is: p or ~p\nclause is: p or ~p or p v q v r\nConversion to clausal:\n- p v q -> {p, q}\n- p ^ q -> {p}, {q}\nThe empty clause is unsatisfiable\nProof by refutation or contradiction:\nA |= B iff A U {~B} is unsatisfiable\nto prove that A logical consequence of B we should\ntake the negation of the conclusion (~B) and prove that\nit leads to an empty clause.\nHow to prove\n{p -> q, q -> r} |= p -> r ?\n1. convert this to clausal\np -> q => {~p, q}\nq -> r => {~q, r}\n~(p -> r) => {p}, {~r}\nthen number them\nand last derive them from each other",
+      "confidence": 0.85,
+      "needsReview": false,
+      "reviewReason": null,
+      "sourceFrameIndices": [
+        7
+      ],
+      "bestFrameIndex": 7,
+      "pageBox": [
+        186,
+        26,
+        893,
+        1000
+      ],
+      "blocks": [
+        {
+          "type": "lines",
+          "text": "branch is closed if there is x & ~x in the same root.\nRules of inference:\n- Modus Ponens (law of detachment - mode that affirms):\nif a conditional statement and its hypothesis are true\nthen the conclusion must also be true\np -> q -> condition statement\np -> hypothesis\n.: q -> therefore evaluation\nImportant table page 72 (Rules of inference)\n- Satisfiability (SAT) and Propositional resolution\np -> q\nq -> r\n------\n.: p -> r\nliteral is: p or ~p\nclause is: p or ~p or p v q v r\nConversion to clausal:\n- p v q -> {p, q}\n- p ^ q -> {p}, {q}\nThe empty clause is unsatisfiable\nProof by refutation or contradiction:\nA |= B iff A U {~B} is unsatisfiable\nto prove that A logical consequence of B we should\ntake the negation of the conclusion (~B) and prove that\nit leads to an empty clause.\nHow to prove\n{p -> q, q -> r} |= p -> r ?\n1. convert this to clausal\np -> q => {~p, q}\nq -> r => {~q, r}\n~(p -> r) => {p}, {~r}\nthen number them\nand last derive them from each other",
+          "box": [
+            211,
+            76,
+            868,
+            903
+          ]
+        }
+      ],
+      "modelUsed": "gemini-3.5-flash"
+    },
+    {
+      "pageNumber": 8,
+      "title": "Processor control instructions and Loops",
+      "text": "I2207 (4) 23.5.2025\n\nProcessor control instructions:\nSTC: Set Carry flag to 1\nSTD: Set direction flag to 1\nSTI: Set Interrupt flag to 1\nCLC: clear Carry flag to 0\nCLD: clear direction flag to 0\nCLI: clear interrupt flag to 0\nCMC: Complement CF\nNote: JNC means if CF = 0, JNS means if SF = 0\nSF: get the bit in the MSB, after an operation (add, sub)\nso we can determine the sign of a number\nPF: if the number of 1 bits is even then it is set to 1\nif the number is odd then it is cleared to 0\nAF: contains the carry but from the fourth bit to the fifth\nLoop Instructions:\nFirst we should define CX (Count) the rate of repetition and\nthen start the loop ex. for:\nLoop for\nand the CX value will automatically decrease by 1 each loop\nwithout do it that manually\nDo-While loop:\nsame as for but use do -----\nLoop do\nArray:\nA db 10 dup(0); create an array of 10 elements and fill them with 0\nA db 10,2,7,6\nA dw 2,3,12\nOnly si & di can be used to indicate an element in array A[si], A[di]\nto move to a new line when display use: new dw 10,13,'$'",
+      "confidence": 0.9,
+      "needsReview": false,
+      "reviewReason": null,
+      "sourceFrameIndices": [
+        8
+      ],
+      "bestFrameIndex": 8,
+      "pageBox": [
+        100,
+        0,
+        781,
+        951
+      ],
+      "blocks": [
+        {
+          "type": "header",
+          "text": "I2207 (4) 23.5.2025",
+          "box": [
+            121,
+            142,
+            149,
+            901
+          ]
+        },
+        {
+          "type": "lines",
+          "text": "Processor control instructions:\nSTC: Set Carry flag to 1\nSTD: Set direction flag to 1\nSTI: Set Interrupt flag to 1\nCLC: clear Carry flag to 0\nCLD: clear direction flag to 0\nCLI: clear interrupt flag to 0\nCMC: Complement CF\nNote: JNC means if CF = 0, JNS means if SF = 0\nSF: get the bit in the MSB, after an operation (add, sub)\nso we can determine the sign of a number\nPF: if the number of 1 bits is even then it is set to 1\nif the number is odd then it is cleared to 0\nAF: contains the carry but from the fourth bit to the fifth\nLoop Instructions:\nFirst we should define CX (Count) the rate of repetition and\nthen start the loop ex. for:\nLoop for\nand the CX value will automatically decrease by 1 each loop\nwithout do it that manually\nDo-While loop:\nsame as for but use do -----\nLoop do\nArray:\nA db 10 dup(0); create an array of 10 elements and fill them with 0\nA db 10,2,7,6\nA dw 2,3,12\nOnly si & di can be used to indicate an element in array A[si], A[di]\nto move to a new line when display use: new dw 10,13,'$'",
+          "box": [
+            146,
+            106,
+            735,
+            922
+          ]
+        }
+      ],
+      "modelUsed": "gemini-3.5-flash"
+    }
+  ],
+  "selectedFrameCount": 9,
+  "discardedFrameCount": 0,
+  "processingNote": "Frames were filtered locally before Gemini checked their order, text, and confidence.",
+  "usage": {
+    "model": "gemini-3.5-flash",
+    "inputTokens": 10910,
+    "outputTokens": 4111,
+    "thinkingTokens": 0,
+    "keyIndex": 1,
+    "seconds": 32.7,
+    "attempts": [
+      {
+        "model": "gemini-3.6-flash",
+        "key": 1,
+        "outcome": "busy",
+        "seconds": 6.9
+      },
+      {
+        "model": "gemini-3.8-flash",
+        "key": 1,
+        "outcome": "busy",
+        "seconds": 6.9
+      },
+      {
+        "model": "gemini-3.5-flash",
+        "key": 1,
+        "outcome": "ok",
+        "seconds": 18.9
+      }
+    ]
+  }
+}

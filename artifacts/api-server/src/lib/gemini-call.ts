@@ -23,6 +23,15 @@ export class BlockedOutputError extends Error {
   }
 }
 
+// The model did not answer in time. Under heavy load Google sometimes holds a request for
+// minutes before failing it, so we stop waiting and move on to the next model.
+export class GeminiTimeoutError extends Error {
+  constructor(public ms: number) {
+    super(`Model did not answer within ${Math.round(ms / 1000)} s`);
+    this.name = "GeminiTimeoutError";
+  }
+}
+
 export class AllModelsFailedError extends Error {
   constructor(public failures: Array<{ model: string; kind: FailureKind }>) {
     super(
@@ -35,6 +44,7 @@ export class AllModelsFailedError extends Error {
 export function classifyGeminiError(error: unknown): FailureKind {
   if (error instanceof InvalidOutputError) return "invalid_output";
   if (error instanceof BlockedOutputError) return "blocked";
+  if (error instanceof GeminiTimeoutError) return "transient";
   const value = (error ?? {}) as { status?: unknown; message?: unknown };
   const status = Number(value.status);
   const message = typeof value.message === "string" ? value.message : "";
@@ -61,15 +71,24 @@ const COOLDOWN_MS: Partial<Record<FailureKind, number>> = {
   gone: 60 * 60_000,
 };
 const cooldowns = new Map<string, number>();
+// Groups (models) that answered "busy" recently. They are tried last for a while rather than
+// skipped: on the free tier every attempt counts against the daily request limit, busy or not.
+const recentlyBusy = new Map<string, number>();
+const BUSY_MEMORY_MS = 2 * 60_000;
 
 export function resetModelCooldowns() {
   cooldowns.clear();
+  recentlyBusy.clear();
 }
 
 export type FallbackEvent = { model: string; kind: FailureKind; attempt: number; error: unknown };
 
 type Options = {
   attemptsPerModel?: number;
+  // Targets in the same group share one budget of busy answers: "high demand" is about the model,
+  // not the API key, so once a model has been busy `busyPerGroup` times its other keys are skipped.
+  groupOf?: (target: string) => string;
+  busyPerGroup?: number;
   baseDelayMs?: number;
   sleep?: (ms: number) => Promise<void>;
   now?: () => number;
@@ -85,20 +104,32 @@ export async function runWithModelFallback<T>(
 ): Promise<{ result: T; model: string }> {
   const {
     attemptsPerModel = 3,
+    groupOf = (target) => target,
+    busyPerGroup = Infinity,
     baseDelayMs = 1500,
     sleep = (ms) => new Promise<void>((resolve) => setTimeout(resolve, ms)),
     now = Date.now,
     onEvent,
   } = options;
   const failures: Array<{ model: string; kind: FailureKind }> = [];
+  const busyCount = new Map<string, number>();
+  const busyLately = (target: string) => (recentlyBusy.get(groupOf(target)) ?? 0) > now();
+  const ordered = [...models.filter((target) => !busyLately(target)), ...models.filter(busyLately)];
 
-  for (const model of models) {
+  for (const model of ordered) {
     if ((cooldowns.get(model) ?? 0) > now()) continue;
+    const group = groupOf(model);
+    if ((busyCount.get(group) ?? 0) >= busyPerGroup) {
+      failures.push({ model, kind: "transient" });
+      continue;
+    }
 
     let lastKind: FailureKind = "transient";
     for (let attempt = 0; attempt < attemptsPerModel; attempt += 1) {
       try {
-        return { result: await run(model), model };
+        const result = await run(model);
+        recentlyBusy.delete(group);
+        return { result, model };
       } catch (error) {
         lastKind = classifyGeminiError(error);
         onEvent?.({ model, kind: lastKind, attempt, error });
@@ -109,6 +140,12 @@ export async function runWithModelFallback<T>(
           break;
         }
         if (lastKind === "blocked") break;
+        if (lastKind === "transient") {
+          busyCount.set(group, (busyCount.get(group) ?? 0) + 1);
+          recentlyBusy.set(group, now() + BUSY_MEMORY_MS);
+          // A request that hung until our time limit is not worth repeating on the same model.
+          if (error instanceof GeminiTimeoutError || (busyCount.get(group) ?? 0) >= busyPerGroup) break;
+        }
         // transient or invalid_output: retry this model after a short wait
         if (attempt < attemptsPerModel - 1) await sleep(baseDelayMs * 2 ** attempt);
       }

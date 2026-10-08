@@ -1,18 +1,14 @@
-import {
-  alignedDifference,
-  clarityFromSharpness,
-  frameSharpness,
-  normalize,
-  toGray,
-} from './frame-metrics';
+import { alignedDifference, clarityFromSharpness, frameSharpness, normalize, toGray, type Gray } from './frame-metrics';
 import { detectHand } from './frame-hand';
-import { selectBestFrames, type Sample } from './frame-selection';
+import { findPageSegments, pageCover, type Moment } from './page-segments';
 
 export type SelectionStats = {
   videoSeconds: number;
   width: number;
   height: number;
   samples: number;
+  // Page views found (each gives one frame, long ones a few).
+  views: number;
   seconds: number;
   method: 'playback' | 'seeking';
 };
@@ -29,62 +25,71 @@ export type SelectedFrame = {
   // How much of the page something (a hand) covers (0..1): the larger of the hand found on the
   // page and the paper hidden compared with nearby frames.
   hand: number;
+  // Which page view of the video this frame comes from, and the stretch of video (seconds) that
+  // shows that page: the user can scrub through it to choose a different frame.
+  view: number;
+  range: { from: number; to: number };
+  // An extra frame from a long view (a slow scroll, or a page held still for a while); the AI
+  // merges it with the view's main frame when they show the same page.
+  extra: boolean;
+  // True when the user chose this frame themselves instead of the automatic choice.
+  picked?: boolean;
 };
 
 const ANALYSIS_EDGE = 800; // long edge for the sharpness measurement
-const SIGNATURE_EDGE = 200; // long edge for comparing views
+const MOTION_EDGE = 48; // long edge of the grey copy used to measure motion between moments
 const HAND_EDGE = 120; // long edge for finding the page and a hand on it
 const OUTPUT_EDGE = 1400; // long edge of the frames we keep and send
 const OUTPUT_QUALITY = 0.82;
-const MAX_SAMPLES = 150;
+// Moments are read every 0.1 s: a page flip can take only a few tenths of a second, and a coarser
+// step missed some flips on the test videos. Very long videos get a coarser step to bound the work.
+const MIN_STEP = 0.1;
+const MAX_SAMPLES = 900;
 const MAX_FRAMES = 45;
+// Playing faster skips frames between callbacks: at 4x the moments were ~0.15 s apart and a page
+// flip was missed on the test videos.
+const PLAYBACK_RATE = 2;
+
+type Sample = Moment & { hand: number; paperShare: number; tiny: Gray };
 
 export async function selectVideoFrames(
   file: File,
   onProgress?: (message: string) => void,
-  // `slotSeconds`: keep about one frame per this many seconds of each page view (default 1.2).
-  // Infinity keeps just the best frame of each detected page view.
-  options: { method?: 'auto' | 'seek'; slotSeconds?: number; onStats?: (stats: SelectionStats) => void } = {},
+  options: { method?: 'auto' | 'seek'; onStats?: (stats: SelectionStats) => void } = {},
 ): Promise<SelectedFrame[]> {
-  const url = URL.createObjectURL(file);
-  const video = document.createElement('video');
-  video.preload = 'metadata';
-  video.muted = true;
-  video.playsInline = true;
-  video.src = url;
-
+  const source = await openVideo(file);
+  const { video, duration } = source;
   try {
-    await waitForVideo(video);
     const startedAt = performance.now();
-    const duration = await readDuration(video);
-
     const analysis = makeCanvas(video, ANALYSIS_EDGE);
-    const signature = makeCanvas(video, SIGNATURE_EDGE);
+    const motionView = makeCanvas(video, MOTION_EDGE);
     const handView = makeCanvas(video, HAND_EDGE);
 
-    const step = Math.max(0.2, duration / MAX_SAMPLES);
+    const step = Math.max(MIN_STEP, duration / MAX_SAMPLES);
     const total = Math.max(1, Math.floor((duration - 0.05) / step) + 1);
 
-    const handSignals = (view: ReturnType<typeof makeCanvas>) => {
-      const result = detectHand(view.context.getImageData(0, 0, view.canvas.width, view.canvas.height));
-      return { hand: result.fraction, paperShare: result.paperShare };
-    };
-
+    let previousTiny: Gray | null = null;
     const measure = (timestamp: number): Sample => {
       analysis.context.drawImage(video, 0, 0, analysis.canvas.width, analysis.canvas.height);
-      signature.context.drawImage(video, 0, 0, signature.canvas.width, signature.canvas.height);
+      motionView.context.drawImage(video, 0, 0, motionView.canvas.width, motionView.canvas.height);
       handView.context.drawImage(video, 0, 0, handView.canvas.width, handView.canvas.height);
-      return {
+      const tiny = normalize(toGray(motionView.context.getImageData(0, 0, motionView.canvas.width, motionView.canvas.height)));
+      const hand = detectHand(handView.context.getImageData(0, 0, handView.canvas.width, handView.canvas.height));
+      const sample: Sample = {
         timestamp,
         sharpness: frameSharpness(toGray(analysis.context.getImageData(0, 0, analysis.canvas.width, analysis.canvas.height))),
-        signature: normalize(toGray(signature.context.getImageData(0, 0, signature.canvas.width, signature.canvas.height))),
-        ...handSignals(handView),
+        motion: previousTiny ? meanDifference(tiny, previousTiny) : 0,
+        hand: hand.fraction,
+        paperShare: hand.paperShare,
+        tiny,
       };
+      previousTiny = tiny;
+      return sample;
     };
-    const progress = (count: number) => onProgress?.(`Looking at frame ${Math.min(count, total)} of ${total}…`);
+    const progress = (count: number) => onProgress?.(`Looking at moment ${Math.min(count, total)} of ${total}…`);
 
-    // Playing the video quickly is about twice as fast as jumping to every sample (seeking costs
-    // ~100 ms each); browsers without frame callbacks, or where playback stalls, seek instead.
+    // Playing the video is faster than jumping to every moment (seeking costs ~100 ms each);
+    // browsers without frame callbacks, or where playback stalls, seek instead.
     let samples: Sample[] = [];
     let method: SelectionStats['method'] = 'seeking';
     if (options.method !== 'seek' && supportsFrameCallback(video)) {
@@ -96,33 +101,36 @@ export async function selectVideoFrames(
       }
     }
     if (samples.length < 2) {
+      previousTiny = null;
       samples = await sampleBySeeking(video, step, duration, measure, progress);
       method = 'seeking';
     }
 
-    onProgress?.('Choosing the clearest view of each page…');
-    const { chosen, cover } = selectBestFrames(samples, {
-      step,
-      maxFrames: MAX_FRAMES,
-      slotSeconds: options.slotSeconds ?? 1.2,
-    });
+    onProgress?.('Finding where each page starts and ends…');
+    const cover = pageCover(samples);
+    const segments = findPageSegments(
+      samples.map((sample, i) => ({ ...sample, cover: cover[i] })),
+      { maxFrames: MAX_FRAMES },
+    );
+    const chosen = segments
+      .flatMap((segment, view) => [segment.best, ...segment.extras].map((index) => ({ index, view, extra: index !== segment.best, range: { from: segment.from, to: segment.to } })))
+      .sort((a, b) => a.index - b.index);
 
     // Second pass: re-read only the chosen moments at full quality.
-    const output = makeCanvas(video, OUTPUT_EDGE);
     const frames: SelectedFrame[] = [];
     for (let position = 0; position < chosen.length; position += 1) {
-      const sample = samples[chosen[position]];
-      await seekVideo(video, sample.timestamp);
-      output.context.drawImage(video, 0, 0, output.canvas.width, output.canvas.height);
-      const previous = position ? samples[chosen[position - 1]] : null;
+      const { index, view, extra, range } = chosen[position];
+      const sample = samples[index];
+      const previous = position ? samples[chosen[position - 1].index] : null;
       frames.push({
-        dataUrl: output.canvas.toDataURL('image/jpeg', OUTPUT_QUALITY),
-        width: output.canvas.width,
-        height: output.canvas.height,
+        ...(await source.capture(sample.timestamp)),
         timestamp: sample.timestamp,
         sharpness: clarityFromSharpness(sample.sharpness),
-        difference: previous ? alignedDifference(sample.signature, previous.signature) : 1,
-        hand: cover[chosen[position]],
+        difference: previous ? alignedDifference(sample.tiny, previous.tiny, 2) : 1,
+        hand: cover[index],
+        view,
+        extra,
+        range,
       });
       onProgress?.(`Preparing frame ${position + 1} of ${chosen.length}…`);
     }
@@ -131,13 +139,102 @@ export async function selectVideoFrames(
       width: video.videoWidth,
       height: video.videoHeight,
       samples: samples.length,
+      views: segments.length,
       seconds: (performance.now() - startedAt) / 1000,
       method,
     });
     return frames;
   } finally {
-    URL.revokeObjectURL(url);
+    source.close();
   }
+}
+
+// One moment of a video as shown in the frame picker.
+export type FrameCheck = { timestamp: number; thumb: string; clarity: number; hand: number };
+
+export type VideoSource = {
+  video: HTMLVideoElement;
+  duration: number;
+  // The frame at `timestamp`, at full output quality.
+  capture: (timestamp: number) => Promise<{ dataUrl: string; width: number; height: number }>;
+  // Looks at `count` evenly spaced moments between `from` and `to` and scores each one, so the
+  // user can see at a glance which frames of a page are clear and which have a hand on them.
+  scan: (from: number, to: number, count: number, onEach?: (done: number) => void) => Promise<FrameCheck[]>;
+  // Scores the single frame at `timestamp` (for a frame chosen by hand with the slider).
+  check: (timestamp: number) => Promise<Omit<FrameCheck, 'thumb'>>;
+  close: () => void;
+};
+
+export async function openVideo(file: Blob): Promise<VideoSource> {
+  const url = URL.createObjectURL(file);
+  const video = document.createElement('video');
+  video.preload = 'auto';
+  video.muted = true;
+  video.playsInline = true;
+  video.src = url;
+  try {
+    await waitForVideo(video);
+    const duration = await readDuration(video);
+    let output: ReturnType<typeof makeCanvas> | null = null;
+    let thumbView: ReturnType<typeof makeCanvas> | null = null;
+    let analysis: ReturnType<typeof makeCanvas> | null = null;
+    let handView: ReturnType<typeof makeCanvas> | null = null;
+    const score = () => {
+      analysis ??= makeCanvas(video, ANALYSIS_EDGE);
+      handView ??= makeCanvas(video, HAND_EDGE);
+      analysis.context.drawImage(video, 0, 0, analysis.canvas.width, analysis.canvas.height);
+      handView.context.drawImage(video, 0, 0, handView.canvas.width, handView.canvas.height);
+      const sharpness = frameSharpness(toGray(analysis.context.getImageData(0, 0, analysis.canvas.width, analysis.canvas.height)));
+      const hand = detectHand(handView.context.getImageData(0, 0, handView.canvas.width, handView.canvas.height));
+      return { clarity: clarityFromSharpness(sharpness), hand: hand.fraction, paperShare: hand.paperShare };
+    };
+    return {
+      video,
+      duration,
+      capture: async (timestamp) => {
+        await seekVideo(video, timestamp);
+        output ??= makeCanvas(video, OUTPUT_EDGE);
+        output.context.drawImage(video, 0, 0, output.canvas.width, output.canvas.height);
+        return { dataUrl: output.canvas.toDataURL('image/jpeg', OUTPUT_QUALITY), width: output.canvas.width, height: output.canvas.height };
+      },
+      scan: async (from, to, count, onEach) => {
+        thumbView ??= makeCanvas(video, 240);
+        const moments: Array<{ timestamp: number; thumb: string; clarity: number; hand: number; paperShare: number }> = [];
+        const span = Math.max(0, Math.min(to, duration) - from);
+        const n = Math.max(1, Math.min(count, Math.floor(span * 15) + 1));
+        for (let k = 0; k < n; k += 1) {
+          const timestamp = n === 1 ? from : from + (span * k) / (n - 1);
+          await seekVideo(video, timestamp);
+          thumbView.context.drawImage(video, 0, 0, thumbView.canvas.width, thumbView.canvas.height);
+          moments.push({ timestamp, thumb: thumbView.canvas.toDataURL('image/jpeg', 0.7), ...score() });
+          onEach?.(k + 1);
+        }
+        // Judge hidden paper against the rest of this page's frames, as the automatic choice does.
+        const cover = pageCover(moments, Infinity);
+        return moments.map(({ timestamp, thumb, clarity }, k) => ({ timestamp, thumb, clarity, hand: cover[k] }));
+      },
+      check: async (timestamp) => {
+        await seekVideo(video, timestamp);
+        const { clarity, hand } = score();
+        return { timestamp, clarity, hand };
+      },
+      close: () => {
+        video.removeAttribute('src');
+        video.load();
+        URL.revokeObjectURL(url);
+      },
+    };
+  } catch (error) {
+    URL.revokeObjectURL(url);
+    throw error;
+  }
+}
+
+// Mean absolute difference of two same-sized grey copies: how much the picture changed.
+function meanDifference(a: Gray, b: Gray) {
+  let total = 0;
+  for (let i = 0; i < a.data.length; i += 1) total += Math.abs(a.data[i] - b.data[i]);
+  return total / a.data.length;
 }
 
 type VideoWithFrames = HTMLVideoElement & {
@@ -149,16 +246,16 @@ function supportsFrameCallback(video: HTMLVideoElement): video is VideoWithFrame
 }
 
 // One sample every `step` seconds, read as the video plays at high speed.
-async function sampleByPlayback(
+async function sampleByPlayback<T>(
   video: VideoWithFrames,
   step: number,
   duration: number,
-  measure: (timestamp: number) => Sample,
+  measure: (timestamp: number) => T,
   progress: (count: number) => void,
-): Promise<Sample[]> {
+): Promise<T[]> {
   await seekVideo(video, 0);
-  video.playbackRate = 4;
-  const samples: Sample[] = [];
+  video.playbackRate = PLAYBACK_RATE;
+  const samples: T[] = [];
   let next = 0;
   await new Promise<void>((resolve, reject) => {
     let watchdog = window.setTimeout(() => reject(new Error('Playback stalled.')), 5000);
@@ -189,15 +286,15 @@ async function sampleByPlayback(
   return samples;
 }
 
-async function sampleBySeeking(
+async function sampleBySeeking<T>(
   video: HTMLVideoElement,
   step: number,
   duration: number,
-  measure: (timestamp: number) => Sample,
+  measure: (timestamp: number) => T,
   progress: (count: number) => void,
-): Promise<Sample[]> {
+): Promise<T[]> {
   video.playbackRate = 1;
-  const samples: Sample[] = [];
+  const samples: T[] = [];
   for (let t = 0; t < duration - 0.05 || !samples.length; t += step) {
     await seekVideo(video, t);
     samples.push(measure(t));
@@ -256,6 +353,9 @@ async function readDuration(video: HTMLVideoElement) {
 }
 
 function seekVideo(video: HTMLVideoElement, time: number) {
+  const target = Math.min(Math.max(0, time), Math.max(0, video.duration - 0.04));
+  // Already there (seeking to the current time fires no "seeked" event in some browsers).
+  if (Math.abs(video.currentTime - target) < 1e-4 && video.readyState >= 2) return Promise.resolve();
   return new Promise<void>((resolve, reject) => {
     const timeout = window.setTimeout(() => reject(new Error('The video frame could not be read.')), 10000);
     video.addEventListener(
@@ -266,6 +366,6 @@ function seekVideo(video: HTMLVideoElement, time: number) {
       },
       { once: true },
     );
-    video.currentTime = Math.min(time, Math.max(0, video.duration - 0.04));
+    video.currentTime = target;
   });
 }

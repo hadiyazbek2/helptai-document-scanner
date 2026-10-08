@@ -1,9 +1,10 @@
 import { randomUUID } from "node:crypto";
 import { Router, type IRouter, type Response } from "express";
 import { ProcessDocumentBody, ProcessPageBody, type ErrorResponseCode } from "@helptai/api-zod";
+import { ThinkingLevel } from "@google/genai";
 import { clients } from "@helptai/integrations-gemini-ai";
 import { buildPagePrompt, buildPrompt, mainPage, RESPONSE_SCHEMA } from "../lib/analysis";
-import { AllModelsFailedError } from "../lib/gemini-call";
+import { AllModelsFailedError, GeminiTimeoutError } from "../lib/gemini-call";
 import { getModelChain } from "../lib/gemini-config";
 import { analyzeWith, buildParts, type GenerateFn, type PromptImage } from "../lib/gemini-run";
 import { appendUsage } from "../lib/usage-log";
@@ -37,7 +38,30 @@ function sendError(res: Response, code: ErrorResponseCode, message = MESSAGES[co
   res.status(STATUS[code]).json({ error: message, code });
 }
 
-type CallContext = { endpoint: string; requestId: string; document: string; frames: number; uploadKb: number };
+type CallContext = { endpoint: string; requestId: string; document: string; frames: number; uploadKb: number; timeoutMs: number };
+
+// How long one Gemini attempt may take before we give up on it and try the next model. Measured
+// successful calls: one page 14 s, an 8-page document 36-62 s.
+const timeoutFromEnv = (name: string, fallback: number) => {
+  const value = Number(process.env[name]);
+  return Number.isFinite(value) && value > 0 ? value : fallback;
+};
+const DOCUMENT_TIMEOUT_MS = timeoutFromEnv("GEMINI_TIMEOUT_MS", 150_000);
+const PAGE_TIMEOUT_MS = timeoutFromEnv("GEMINI_PAGE_TIMEOUT_MS", 90_000);
+
+// How much the model may "think" before answering. Thinking is billed as output and counts toward
+// the output limit: on "default" one 6-frame document spent 15,729 thinking tokens and its answer
+// was cut off. "low" keeps the reading accurate for transcription. Set GEMINI_THINKING to
+// minimal, low, medium, high, or default (the model's own choice).
+const THINKING_LEVELS: Record<string, ThinkingLevel> = {
+  minimal: ThinkingLevel.MINIMAL,
+  low: ThinkingLevel.LOW,
+  medium: ThinkingLevel.MEDIUM,
+  high: ThinkingLevel.HIGH,
+};
+const thinkingLevel = THINKING_LEVELS[(process.env.GEMINI_THINKING ?? "low").trim().toLowerCase()];
+// Models that rejected a thinking level; they are asked without one from then on.
+const noThinkingLevel = new Set<string>();
 
 // Builds the function that makes one real Gemini call for the given images and prompt, and
 // records its token use (also for failed or refused attempts) in the usage table.
@@ -57,16 +81,42 @@ function makeGenerate(prompt: string, images: PromptImage[], context: CallContex
       frames: context.frames,
       uploadKb: context.uploadKb,
     };
-    try {
-      const response = await clients[keyIndex].models.generateContent({
+    const abort = new AbortController();
+    let timer: NodeJS.Timeout | undefined;
+    const ask = (withThinking: boolean) =>
+      clients[keyIndex].models.generateContent({
         model,
         contents,
         config: {
           maxOutputTokens: 16384,
           responseMimeType: "application/json",
           responseSchema: RESPONSE_SCHEMA,
+          abortSignal: abort.signal,
+          ...(withThinking ? { thinkingConfig: { thinkingLevel } } : {}),
         },
       });
+    const askOnce = async () => {
+      const withThinking = thinkingLevel !== undefined && !noThinkingLevel.has(model);
+      try {
+        return await ask(withThinking);
+      } catch (error) {
+        // A model that does not support thinking levels: ask again without one.
+        const message = error instanceof Error ? error.message : "";
+        if (!withThinking || Number((error as { status?: unknown })?.status) !== 400 || !/thinking/i.test(message)) throw error;
+        noThinkingLevel.add(model);
+        return ask(false);
+      }
+    };
+    try {
+      const response = await Promise.race([
+        askOnce(),
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(() => {
+            abort.abort();
+            reject(new GeminiTimeoutError(context.timeoutMs));
+          }, context.timeoutMs);
+        }),
+      ]);
       const finishReason = response.candidates?.[0]?.finishReason ? String(response.candidates[0].finishReason) : "";
       const usage = {
         inputTokens: response.usageMetadata?.promptTokenCount ?? 0,
@@ -99,6 +149,8 @@ function makeGenerate(prompt: string, images: PromptImage[], context: CallContex
         note: error instanceof Error ? error.message.replace(/\s+/g, " ").slice(0, 160) : String(error).slice(0, 160),
       });
       throw error;
+    } finally {
+      clearTimeout(timer);
     }
   };
 }
@@ -124,13 +176,14 @@ router.post("/process-document", async (req, res) => {
     return;
   }
 
+  const started = Date.now();
   try {
     const images = inlineFrames.flatMap((frame, index) =>
       frame ? [{ ...frame, label: `Frame ${index + 1} (${frames[index].timestamp.toFixed(1)}s):` }] : [],
     );
-    const { pages, model, usage } = await analyzeWith(
+    const { pages, model, keyIndex, usage, attempts } = await analyzeWith(
       makeGenerate(buildPrompt(documentName, frames), images, {
-        endpoint: "process-document", requestId: newRequestId(), document: documentName, frames: frames.length, uploadKb: uploadKb(images),
+        endpoint: "process-document", requestId: newRequestId(), document: documentName, frames: frames.length, uploadKb: uploadKb(images), timeoutMs: DOCUMENT_TIMEOUT_MS,
       }),
       frames,
       { models: getModelChain(), keyCount: clients.length, onEvent: logAttempt(req) },
@@ -145,7 +198,7 @@ router.post("/process-document", async (req, res) => {
       discardedFrameCount: frames.length - used.size,
       processingNote:
         "Frames were filtered locally before Gemini checked their order, text, and confidence.",
-      usage,
+      usage: { ...usage, keyIndex: keyIndex + 1, seconds: secondsSince(started), attempts },
     });
   } catch (error) {
     req.log.error({ err: error }, "Document analysis failed");
@@ -167,22 +220,28 @@ router.post("/process-page", async (req, res) => {
   }
 
   const { documentName, pageNumber } = parsed.data;
+  const started = Date.now();
   try {
     const images = [{ ...image, label: "Frame 1:" }];
-    const { pages, model, usage } = await analyzeWith(
+    const { pages, model, keyIndex, usage, attempts } = await analyzeWith(
       makeGenerate(buildPagePrompt(documentName, pageNumber), images, {
-        endpoint: "process-page", requestId: newRequestId(), document: documentName, frames: 1, uploadKb: uploadKb(images),
+        endpoint: "process-page", requestId: newRequestId(), document: documentName, frames: 1, uploadKb: uploadKb(images), timeoutMs: PAGE_TIMEOUT_MS,
       }),
       [{ timestamp: 0, sharpness: 1, difference: 0 }],
       { models: getModelChain(), keyCount: clients.length, onEvent: logAttempt(req) },
     );
     req.log.info({ usage, pageNumber }, "Page rebuilt");
-    res.json({ page: { ...mainPage(pages), pageNumber, modelUsed: model }, usage });
+    res.json({
+      page: { ...mainPage(pages), pageNumber, modelUsed: model },
+      usage: { ...usage, keyIndex: keyIndex + 1, seconds: secondsSince(started), attempts },
+    });
   } catch (error) {
     req.log.error({ err: error }, "Page analysis failed");
     sendError(res, errorCode(error));
   }
 });
+
+const secondsSince = (started: number) => Math.round((Date.now() - started) / 100) / 10;
 
 function logAttempt(req: { log: { warn: (o: object, m: string) => void } }) {
   return ({ model, kind, attempt, error }: { model: string; kind: string; attempt: number; error: unknown }) =>

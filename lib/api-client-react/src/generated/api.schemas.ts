@@ -128,6 +128,13 @@ export interface ReconstructedPage {
   modelUsed?: string;
 }
 
+export interface Attempt {
+  model: string;
+  key: number;
+  outcome: string;
+  seconds: number;
+}
+
 /**
  * What this request used, for working out running costs.
  */
@@ -136,6 +143,12 @@ export interface Usage {
   inputTokens: number;
   outputTokens: number;
   thinkingTokens: number;
+  /** Which API key answered, counting from 1 (developer information). */
+  keyIndex?: number;
+  /** Time from receiving the request to answering it, including failed attempts. */
+  seconds?: number;
+  /** Every try, in order, with the model, key (from 1), outcome and seconds. */
+  attempts?: Attempt[];
 }
 
 export interface ProcessPageInput {

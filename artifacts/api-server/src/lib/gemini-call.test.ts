@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   AllModelsFailedError,
   BlockedOutputError,
+  GeminiTimeoutError,
   InvalidOutputError,
   classifyGeminiError,
   resetModelCooldowns,
@@ -91,5 +92,44 @@ describe("runWithModelFallback", () => {
       { model: "a", kind: "daily_quota" },
       { model: "b", kind: "transient" },
     ]);
+  });
+
+  it("after a model's busy budget, skips its other keys and moves to the next model", async () => {
+    const run = vi.fn(async (target: string) => {
+      if (target.startsWith("a@")) throw busy();
+      return "ok";
+    });
+    const out = await runWithModelFallback(["a@0", "a@1", "b@0"], run, { ...noSleep, groupOf: (t) => t.split("@")[0], busyPerGroup: 2 });
+    expect(out.model).toBe("b@0");
+    expect(run.mock.calls.map(([t]) => t)).toEqual(["a@0", "a@0", "b@0"]);
+  });
+
+  it("does not repeat an attempt that hit the time limit", async () => {
+    const run = vi.fn(async (model: string) => {
+      if (model === "a") throw new GeminiTimeoutError(1000);
+      return "from-b";
+    });
+    const out = await runWithModelFallback(["a", "b"], run, noSleep);
+    expect(out.model).toBe("b");
+    expect(run.mock.calls.filter(([m]) => m === "a")).toHaveLength(1);
+    expect(classifyGeminiError(new GeminiTimeoutError(1000))).toBe("transient");
+  });
+
+  it("tries a model that was busy a moment ago last on the next request, then forgets after a while", async () => {
+    let clock = 0;
+    const now = () => clock;
+    const seen: string[] = [];
+    const run = vi.fn(async (model: string) => {
+      seen.push(model);
+      if (model === "a" && clock === 0) throw busy();
+      return model;
+    });
+    const options = { ...noSleep, now, busyPerGroup: 1 };
+    expect((await runWithModelFallback(["a", "b"], run, options)).model).toBe("b");
+    clock = 1000;
+    expect((await runWithModelFallback(["a", "b"], run, options)).model).toBe("b");
+    clock = 3 * 60_000;
+    expect((await runWithModelFallback(["a", "b"], run, options)).model).toBe("a");
+    expect(seen).toEqual(["a", "b", "b", "a"]);
   });
 });

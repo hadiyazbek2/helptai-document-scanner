@@ -46,8 +46,13 @@ function costOf(model, input, output, standard = false) {
 }
 
 const usage = load('usage.csv');
-// results-v1.csv holds the first runs, made before hand detection (it recorded `candidates`, not `slot`).
-const results = [...load('results-v1.csv').map((r) => ({ ...r, slot: `cand ${r.candidates}`, hand_frames: '' })), ...load('results.csv')];
+// results-v1.csv holds the first runs, made before hand detection (it recorded `candidates`, not `slot`);
+// results-v2.csv the runs that took about one frame per `slot` seconds; results.csv the page-view runs.
+const results = [
+  ...load('results-v1.csv').map((r) => ({ ...r, mode: `cand ${r.candidates}`, hand_frames: '' })),
+  ...load('results-v2.csv').map((r) => ({ ...r, mode: `slot ${r.slot}` })),
+  ...load('results.csv').map((r) => ({ ...r, mode: `${r.views} views` })),
+];
 const out = [`# helptai test data report`, ``, `Built ${new Date().toISOString().slice(0, 16).replace('T', ' ')} UTC from \`usage.csv\` (${usage.length} Gemini requests) and \`results.csv\` (${results.length} test runs).`, ``];
 
 // ---------- token use ----------
@@ -95,8 +100,8 @@ out.push(`## Test runs`, ``);
 if (!results.length) out.push('No runs yet. Try `npm run eval -- data/videos/Book.mp4`.', '');
 else {
   out.push(`"Ranges covered" is how many of the hand-labelled pages got at least one kept frame; "junk" is kept frames that are not on any page (page flips, blur); "mapping" is how many pages got a best frame from the right part of the video.`, ``);
-  out.push(table(['run', 'video', 'slot', 'frames', 'hand frames', 'selection s', 'ranges covered', 'junk', 'model', 'gemini s', 'pages (expected)', 'mapping', 'flagged', 'in', 'out', 'think', 'cost (intro)'],
-    results.map((r) => [r.run_id.slice(0, 15), r.video, r.slot || r.candidates, r.frames_kept, r.hand_frames || '–', r.selection_s, r.ranges_covered || '–', r.junk_frames === '' ? '–' : r.junk_frames, r.model || '–', r.gemini_s || '–', r.pages ? `${r.pages}${r.expected_pages ? ` (${r.expected_pages})` : ''}` : '–', r.mapping_correct || '–', r.flagged === '' ? '–' : r.flagged, r.input_tokens ? fmt(num(r.input_tokens)) : '–', r.output_tokens ? fmt(num(r.output_tokens)) : '–', r.thinking_tokens ? fmt(num(r.thinking_tokens)) : '–', r.cost_intro_usd ? `$${r.cost_intro_usd}` : '–'])), ``);
+  out.push(table(['run', 'video', 'mode', 'frames', 'hand frames', 'selection s', 'ranges covered', 'junk', 'model', 'gemini s', 'pages (expected)', 'mapping', 'flagged', 'in', 'out', 'think', 'cost (intro)'],
+    results.map((r) => [r.run_id.slice(0, 15), r.video, r.mode, r.frames_kept, r.hand_frames || '–', r.selection_s, r.ranges_covered || '–', r.junk_frames === '' ? '–' : r.junk_frames, r.model || '–', r.gemini_s || '–', r.pages ? `${r.pages}${r.expected_pages ? ` (${r.expected_pages})` : ''}` : '–', r.mapping_correct || '–', r.flagged === '' ? '–' : r.flagged, r.input_tokens ? fmt(num(r.input_tokens)) : '–', r.output_tokens ? fmt(num(r.output_tokens)) : '–', r.thinking_tokens ? fmt(num(r.thinking_tokens)) : '–', r.cost_intro_usd ? `$${r.cost_intro_usd}` : '–'])), ``);
 }
 
 const text = out.join('\n');

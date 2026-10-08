@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 
+export * from './attempt';
 export * from './box';
 export * from './errorResponse';
 export * from './errorResponseCode';

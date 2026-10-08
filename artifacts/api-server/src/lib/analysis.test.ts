@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { InvalidOutputError } from "./gemini-call";
-import { blocksToText, normalizeBox, parseModelResult } from "./analysis";
+import { blocksToText, normalizeBox, parseModelResult, textOverlap } from "./analysis";
 
 const frames = [
   { timestamp: 0, sharpness: 0.4, difference: 1 },
@@ -117,5 +117,33 @@ describe("page layout (blocks)", () => {
 
   it("converts blocks to plain text with tables as rows", () => {
     expect(blocksToText([{ type: "table", text: "", rows: [["a", "b"], ["c", "d"]], box: null }])).toBe("a | b\nc | d");
+  });
+});
+
+describe("repeated pages", () => {
+  const text = (words: string) => [{ type: "paragraph", text: words, box: null }];
+  const pageA = "The assignment operator stores a value in a variable and returns the stored value to the caller";
+  const pageB = "Increment and decrement operators change a counter by one before or after the value is used";
+
+  it("merges a page the model returned twice in a row, keeping the better read and all its frames", () => {
+    const pages = parse([
+      page({ blocks: text(pageA), sourceFrames: [1], bestFrame: 1, needsReview: true, reviewReason: "Hand" }),
+      page({ blocks: text(`${pageA} again`), sourceFrames: [2], bestFrame: 2 }),
+      page({ blocks: text(pageB), sourceFrames: [3], bestFrame: 3 }),
+    ]);
+    expect(pages).toHaveLength(2);
+    expect(pages[0]).toMatchObject({ pageNumber: 1, needsReview: false, bestFrameIndex: 1, sourceFrameIndices: [0, 1] });
+    expect(pages[1]).toMatchObject({ pageNumber: 2, sourceFrameIndices: [2] });
+  });
+
+  it("keeps different pages, short pages, and a page the user came back to later", () => {
+    expect(parse([page({ blocks: text(pageA) }), page({ blocks: text(pageB) })])).toHaveLength(2);
+    expect(parse([page({ blocks: text("Notes") }), page({ blocks: text("Notes") })])).toHaveLength(2);
+    expect(parse([page({ blocks: text(pageA) }), page({ blocks: text(pageB) }), page({ blocks: text(pageA) })])).toHaveLength(3);
+  });
+
+  it("measures overlap against the smaller page, so a partly hidden read still matches", () => {
+    expect(textOverlap(pageA, pageA.split(" ").slice(0, 12).join(" "))).toBe(1);
+    expect(textOverlap(pageA, pageB)).toBeLessThan(0.15);
   });
 });

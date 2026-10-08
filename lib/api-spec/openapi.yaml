@@ -279,6 +279,22 @@ components:
         - bestFrameIndex
         - pageBox
         - blocks
+    Attempt:
+      type: object
+      properties:
+        model:
+          type: string
+        key:
+          type: integer
+        outcome:
+          type: string
+        seconds:
+          type: number
+      required:
+        - model
+        - key
+        - outcome
+        - seconds
     Usage:
       type: object
       description: What this request used, for working out running costs.
@@ -291,6 +307,17 @@ components:
           type: integer
         thinkingTokens:
           type: integer
+        keyIndex:
+          type: integer
+          description: Which API key answered, counting from 1 (developer information).
+        seconds:
+          type: number
+          description: Time from receiving the request to answering it, including failed attempts.
+        attempts:
+          type: array
+          description: Every try, in order, with the model, key (from 1), outcome and seconds.
+          items:
+            $ref: "#/components/schemas/Attempt"
       required:
         - model
         - inputTokens

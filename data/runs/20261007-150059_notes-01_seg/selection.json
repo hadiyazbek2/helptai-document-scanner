@@ -1,0 +1,126 @@
+{
+  "video": "notes-01",
+  "duration": 17.262333,
+  "width": 478,
+  "height": 850,
+  "seconds": 10.01,
+  "stats": {
+    "videoSeconds": 17.262333,
+    "width": 478,
+    "height": 850,
+    "samples": 203,
+    "views": 9,
+    "seconds": 9.997799999999813,
+    "method": "playback"
+  },
+  "frames": [
+    {
+      "timestamp": 0.03,
+      "clarity": 0.873,
+      "hand": 0,
+      "view": 0,
+      "range": [
+        0,
+        2.18
+      ],
+      "width": 478,
+      "height": 850
+    },
+    {
+      "timestamp": 3.03,
+      "clarity": 0.907,
+      "hand": 0,
+      "view": 1,
+      "range": [
+        2.18,
+        5.3
+      ],
+      "width": 478,
+      "height": 850
+    },
+    {
+      "timestamp": 7.13,
+      "clarity": 0.918,
+      "hand": 0.042,
+      "view": 2,
+      "range": [
+        5.3,
+        7.83
+      ],
+      "width": 478,
+      "height": 850
+    },
+    {
+      "timestamp": 8.43,
+      "clarity": 0.95,
+      "hand": 0.039,
+      "view": 3,
+      "range": [
+        7.83,
+        10.18
+      ],
+      "width": 478,
+      "height": 850
+    },
+    {
+      "timestamp": 11.73,
+      "clarity": 0.861,
+      "hand": 0.049,
+      "view": 4,
+      "range": [
+        10.18,
+        12.23
+      ],
+      "width": 478,
+      "height": 850
+    },
+    {
+      "timestamp": 12.73,
+      "clarity": 0.877,
+      "hand": 0.05,
+      "view": 5,
+      "range": [
+        12.23,
+        13.1
+      ],
+      "width": 478,
+      "height": 850
+    },
+    {
+      "timestamp": 13.43,
+      "clarity": 0.772,
+      "hand": 0.089,
+      "view": 6,
+      "range": [
+        13.1,
+        14.13
+      ],
+      "width": 478,
+      "height": 850
+    },
+    {
+      "timestamp": 15.33,
+      "clarity": 0.767,
+      "hand": 0.04,
+      "view": 7,
+      "range": [
+        14.13,
+        16.08
+      ],
+      "width": 478,
+      "height": 850
+    },
+    {
+      "timestamp": 17.06,
+      "clarity": 0.897,
+      "hand": 0.034,
+      "view": 8,
+      "range": [
+        16.08,
+        17.23
+      ],
+      "width": 478,
+      "height": 850
+    }
+  ]
+}

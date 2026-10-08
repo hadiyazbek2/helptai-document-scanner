@@ -1,5 +1,5 @@
 import { parseModelResult, type AnalyzedPage, type FrameInfo } from "./analysis";
-import { BlockedOutputError, InvalidOutputError, runWithModelFallback, type FallbackEvent } from "./gemini-call";
+import { BlockedOutputError, InvalidOutputError, classifyGeminiError, runWithModelFallback, type FallbackEvent } from "./gemini-call";
 import { buildTargets, parseTarget } from "./gemini-config";
 
 export type PromptImage = { mimeType: string; data: string; label?: string };
@@ -18,6 +18,10 @@ export function buildParts(prompt: string, images: PromptImage[]) {
 }
 
 export type Usage = { model: string; inputTokens: number; outputTokens: number; thinkingTokens: number };
+
+// One try against one model on one key, for the developer view: which model and key answered,
+// what failed before it, and how long it all took.
+export type Attempt = { model: string; key: number; outcome: string; seconds: number };
 
 // One call to Gemini, as the pieces we need from its response.
 export type RawResponse = {
@@ -38,25 +42,54 @@ export async function analyzeWith(
     keyCount: number;
     onEvent?: (event: FallbackEvent) => void;
   },
-): Promise<{ pages: AnalyzedPage[]; model: string; usage: Usage }> {
+): Promise<{ pages: AnalyzedPage[]; model: string; keyIndex: number; usage: Usage; attempts: Attempt[] }> {
   let usage: RawResponse["usage"];
+  const attempts: Attempt[] = [];
+
+  const readPages = async (target: string) => {
+    const response = await generate(parseTarget(target));
+    const reason = response.finishReason;
+    if (reason === "MAX_TOKENS") throw new InvalidOutputError("Model output was cut off");
+    if (reason && BLOCKED_FINISH_REASONS.has(reason)) throw new BlockedOutputError(reason);
+    const pages = parseModelResult(response.text, frames);
+    usage = response.usage;
+    return pages;
+  };
+
   const { result: pages, model: target } = await runWithModelFallback(
     buildTargets(options.models, options.keyCount),
     async (target) => {
-      const response = await generate(parseTarget(target));
-      const reason = response.finishReason;
-      if (reason === "MAX_TOKENS") throw new InvalidOutputError("Model output was cut off");
-      if (reason && BLOCKED_FINISH_REASONS.has(reason)) throw new BlockedOutputError(reason);
-      const pages = parseModelResult(response.text, frames);
-      usage = response.usage;
-      return pages;
+      const { model, keyIndex } = parseTarget(target);
+      const attempt: Attempt = { model, key: keyIndex + 1, outcome: "pending", seconds: 0 };
+      attempts.push(attempt);
+      const started = Date.now();
+      try {
+        const pages = await readPages(target);
+        attempt.outcome = "ok";
+        return pages;
+      } catch (error) {
+        attempt.outcome = classifyGeminiError(error) === "transient" ? "busy" : classifyGeminiError(error);
+        throw error;
+      } finally {
+        attempt.seconds = Math.round((Date.now() - started) / 100) / 10;
+      }
     },
-    { onEvent: options.onEvent },
+    {
+      onEvent: options.onEvent,
+      // Busy is per model, not per key: after one "high demand" answer, try the next model rather
+      // than the same model on another key. Every attempt counts against the free tier's small
+      // daily request limit, even a busy one, so retries are kept to a minimum.
+      groupOf: (target) => parseTarget(target).model,
+      busyPerGroup: 1,
+      attemptsPerModel: 2,
+    },
   );
-  const { model } = parseTarget(target);
+  const { model, keyIndex } = parseTarget(target);
   return {
     pages,
     model,
+    keyIndex,
+    attempts,
     usage: {
       model,
       inputTokens: usage?.inputTokens ?? 0,

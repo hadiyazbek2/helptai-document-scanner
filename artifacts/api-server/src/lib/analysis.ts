@@ -91,7 +91,7 @@ Document name: ${documentName}
 
 ${frameNotes}
 
-Inspect the images in sequence. Several frames often show the same page, and a frame can show parts of two pages while a page is being turned. When several frames show the same page, one of them may have a hand, a finger or blur over part of the text: read the clearest frame as the bestFrame, and use the other frames of that page to fill in any text it hides. Group the frames into logical pages in reading order. Do not invent content. For each page return:
+Inspect the images in sequence. Several frames often show the same page: people hold the camera still on each page for a few seconds, so consecutive frames of one page are common and must become ONE page, never repeated pages. and a frame can show parts of two pages while a page is being turned. When several frames show the same page, one of them may have a hand, a finger or blur over part of the text: read the clearest frame as the bestFrame, and use the other frames of that page to fill in any text it hides. Group the frames into logical pages in reading order. Do not invent content. For each page return:
 ${PAGE_FIELDS}
 
 Frames that only show a page turn, a hand, or the table, with no readable page, belong to no page. Keep the page list concise: if several frames show the same page, merge them into one page.`;
@@ -128,10 +128,11 @@ export function parseModelResult(text: string, frames: FrameInfo[]): AnalyzedPag
   const rawPages = (value as { pages?: unknown } | null)?.pages;
   if (!Array.isArray(rawPages)) throw new InvalidOutputError("Model output had no pages array");
 
-  const pages = rawPages
-    .map((page, index) => normalizePage(page, index, frames))
-    .filter((page): page is AnalyzedPage => page !== null)
-    .map((page, index) => ({ ...page, pageNumber: index + 1 }));
+  const pages = mergeRepeatedPages(
+    rawPages
+      .map((page, index) => normalizePage(page, index, frames))
+      .filter((page): page is AnalyzedPage => page !== null),
+  ).map((page, index) => ({ ...page, pageNumber: index + 1 }));
   if (!pages.length) throw new InvalidOutputError("Model output contained no usable pages");
   return pages;
 }
@@ -238,4 +239,53 @@ function normalizePage(value: unknown, index: number, frames: FrameInfo[]): Anal
     pageBox: normalizeBox(page.pageBox),
     blocks,
   };
+}
+
+// Pairs of consecutive words, lower-cased, without punctuation. Single words are shared by any
+// two pages on one topic ("the", "value"); word pairs are specific to one page's sentences.
+function wordPairs(text: string) {
+  const list = text.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? [];
+  const pairs = new Set<string>();
+  for (let i = 1; i < list.length; i += 1) pairs.add(`${list[i - 1]} ${list[i]}`);
+  return pairs;
+}
+
+// How much two pages' texts overlap: shared word pairs over the smaller page's pairs (0..1). A page
+// read twice, from two frames, scores close to 1 even when one read is partly hidden by a hand.
+export function textOverlap(a: string, b: string) {
+  const wa = wordPairs(a);
+  const wb = wordPairs(b);
+  const smaller = Math.min(wa.size, wb.size);
+  if (smaller < MIN_WORDS_TO_COMPARE) return 0;
+  let shared = 0;
+  for (const word of wa) if (wb.has(word)) shared += 1;
+  return shared / smaller;
+}
+const MIN_WORDS_TO_COMPARE = 8;
+const SAME_PAGE_OVERLAP = 0.7;
+
+// The model sometimes returns one page twice in a row (the user held the camera on it, so several
+// frames show it). Text, unlike pixels, identifies a page reliably: neighbouring pages whose words
+// mostly overlap are merged, keeping the better read (its text, layout and best frame) and all the
+// frames of both. Only neighbours are merged: a page the user went back to later stays where it is.
+export function mergeRepeatedPages(pages: AnalyzedPage[]): AnalyzedPage[] {
+  const merged: AnalyzedPage[] = [];
+  for (const page of pages) {
+    const last = merged[merged.length - 1];
+    if (last && textOverlap(last.text, page.text) >= SAME_PAGE_OVERLAP) {
+      const better = score(page) > score(last) ? page : last;
+      merged[merged.length - 1] = {
+        ...better,
+        sourceFrameIndices: [...new Set([...last.sourceFrameIndices, ...page.sourceFrameIndices])].sort((a, b) => a - b),
+      };
+    } else {
+      merged.push(page);
+    }
+  }
+  return merged;
+}
+
+// Which of two reads of a page to keep: not flagged first, then more confident, then more text.
+function score(page: AnalyzedPage) {
+  return (page.needsReview ? 0 : 10) + page.confidence + Math.min(1, page.text.length / 5000);
 }

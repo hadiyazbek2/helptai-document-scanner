@@ -19,13 +19,43 @@ import {
   X,
 } from 'lucide-react';
 import { downloadDocx, downloadPdf, downloadPptx } from '@/lib/export';
-import type { ProcessDocumentResult, ProcessPageResult } from '@helptai/api-client-react';
+import type { ProcessDocumentResult, ProcessPageResult, Usage } from '@helptai/api-client-react';
+import { FramePicker, type PickedFrame } from '@/components/frame-picker';
 import { PageReplica } from '@/components/page-replica';
 import { applyPatch, buildDoc, type Doc, type Page } from '@/lib/doc-model';
 import { prepareImage } from '@/lib/image';
+import { HAND_TAG } from '@/lib/page-segments';
 import { selectVideoFrames, type SelectedFrame, type SelectionStats } from '@/lib/video-processing';
 
 type View = 'home' | 'frames' | 'processing' | 'review' | 'patch';
+
+// Which model and key answered each request, and how long it took. Shown while developing; set
+// VITE_SHOW_DEV_INFO=false to hide it (or =true to show it in a production build).
+const SHOW_DEV_INFO = import.meta.env.VITE_SHOW_DEV_INFO ? import.meta.env.VITE_SHOW_DEV_INFO === 'true' : import.meta.env.DEV;
+type RequestInfo = { label: string; usage: Usage };
+
+function DevInfo({ requests }: { requests: RequestInfo[] }) {
+  if (!SHOW_DEV_INFO || !requests.length) return null;
+  const n = (value: number) => value.toLocaleString('en-US');
+  return (
+    <details className="dev-info" open data-testid="panel-dev-info">
+      <summary>developer info</summary>
+      {requests.map(({ label, usage }, index) => (
+        <div className="dev-info-request" key={index}>
+          <strong>{label}</strong>
+          <span>
+            {usage.model} · key {usage.keyIndex ?? '?'} · {usage.seconds !== undefined ? `${usage.seconds.toFixed(1)} s` : '–'} · tokens in {n(usage.inputTokens)} / out {n(usage.outputTokens)} / thinking {n(usage.thinkingTokens)}
+          </span>
+          {usage.attempts && usage.attempts.length > 1 && (
+            <span className="dev-info-tries">
+              tries: {usage.attempts.map((a) => `${a.model.replace(/^gemini-/, '')} key ${a.key} ${a.outcome} ${a.seconds.toFixed(1)} s`).join(' → ')}
+            </span>
+          )}
+        </div>
+      ))}
+    </details>
+  );
+}
 type ToastTone = 'sage' | 'amber';
 function Mark() {
   return (
@@ -199,15 +229,19 @@ function FrameReviewView({
   documentName,
   frames,
   stats,
+  onPick,
   onContinue,
   onReset,
 }: {
   documentName: string;
   frames: SelectedFrame[];
   stats: SelectionStats | null;
+  // Opens the frame picker for one frame; missing when the video is no longer available.
+  onPick: ((index: number) => void) | null;
   onContinue: () => void;
   onReset: () => void;
 }) {
+  const withHand = frames.filter((frame) => frame.hand >= HAND_TAG).length;
   return (
     <main className="frame-review-page" data-testid="view-frame-review">
       <div className="frame-review-header">
@@ -215,7 +249,8 @@ function FrameReviewView({
           <span className="eyebrow">a clear look before reconstruction</span>
           <h1>These are the frames we kept.</h1>
           <p>
-            helptai filtered out blurry and repeated moments on this device. Nothing has been sent for text extraction yet.
+            helptai found where each page starts and ends, and kept the clearest frame of each, on this device. Nothing has been sent for text extraction yet.
+            {withHand > 0 && onPick && ` ${withHand === 1 ? 'One frame has' : `${withHand} frames have`} a hand in view: tap “choose another frame” to look for a clearer one.`}
           </p>
         </div>
         <span className="frame-count" data-testid="text-selected-frame-count">{frames.length} best frames</span>
@@ -224,16 +259,27 @@ function FrameReviewView({
         {frames.map((frame, index) => (
           <figure className="chosen-frame" key={`${frame.timestamp}-${index}`} data-testid={`selected-frame-${index + 1}`}>
             <img src={frame.dataUrl} alt={`Selected document frame ${index + 1}`} />
+            {(frame.hand >= HAND_TAG || frame.picked) && (
+              <div className="frame-tags">
+                {frame.hand >= HAND_TAG && <span className="frame-tag frame-tag-hand" data-testid={`tag-hand-${index + 1}`}>hand in view</span>}
+                {frame.picked && <span className="frame-tag frame-tag-picked">your choice</span>}
+              </div>
+            )}
             <figcaption>
               <strong>candidate {String(index + 1).padStart(2, '0')}</strong>
-              <span>{frame.timestamp.toFixed(1)}s · {Math.round(frame.sharpness * 100)}% clarity</span>
+              <span>page view {String(frame.view + 1).padStart(2, '0')}{frame.extra ? ' · extra frame' : ''} · {frame.timestamp.toFixed(1)}s · {Math.round(frame.sharpness * 100)}% clarity</span>
+              {onPick && (
+                <button className="frame-change" onClick={() => onPick(index)} data-testid={`button-change-frame-${index + 1}`}>
+                  choose another frame
+                </button>
+              )}
             </figcaption>
           </figure>
         ))}
       </div>
       {stats && (
         <p className="frame-stats" data-testid="text-selection-stats">
-          read a {stats.videoSeconds.toFixed(0)} s video ({stats.width}×{stats.height}) in {stats.seconds.toFixed(1)} s · {stats.samples} moments checked · {stats.method}
+          read a {stats.videoSeconds.toFixed(0)} s video ({stats.width}×{stats.height}) in {stats.seconds.toFixed(1)} s · {stats.samples} moments checked · {stats.views} page views · {stats.method}
         </p>
       )}
       <div className="frame-review-actions">
@@ -308,14 +354,19 @@ function ReviewView({
   selectedPageNumber,
   onSelectPage,
   onPatch,
+  onPickFrame,
   onExport,
+  requests,
 }: {
   documentName: string;
   analysis: Doc;
   selectedPageNumber: number;
   onSelectPage: (pageNumber: number) => void;
   onPatch: (pageNumber: number) => void;
+  // Opens the frame picker for a page; missing when the video is no longer available.
+  onPickFrame: ((pageNumber: number) => void) | null;
   onExport: (format: string) => void;
+  requests: RequestInfo[];
 }) {
   const selectedPage = analysis.pages.find((page) => page.pageNumber === selectedPageNumber) ?? analysis.pages[0] ?? null;
   const flagged = analysis.pages.filter((page) => page.status === 'needs-review');
@@ -348,10 +399,18 @@ function ReviewView({
           </div>
           <DocumentSheet page={selectedPage} />
           {selectedPage && (
-            <button className="button button-quiet retake-selected" onClick={() => onPatch(selectedPage.pageNumber)} data-testid="button-retake-selected">
-              <ImagePlus size={15} />
-              retake page {pad(selectedPage.pageNumber)} with a new photo
-            </button>
+            <div className="page-actions">
+              {onPickFrame && selectedPage.video && (
+                <button className="button button-quiet retake-selected" onClick={() => onPickFrame(selectedPage.pageNumber)} data-testid="button-pick-frame">
+                  <Film size={15} />
+                  choose another frame from the video
+                </button>
+              )}
+              <button className="button button-quiet retake-selected" onClick={() => onPatch(selectedPage.pageNumber)} data-testid="button-retake-selected">
+                <ImagePlus size={15} />
+                retake page {pad(selectedPage.pageNumber)} with a new photo
+              </button>
+            </div>
           )}
         </div>
         <aside className="review-sidebar">
@@ -387,6 +446,7 @@ function ReviewView({
             {retaken.length > 0 && <div className="status-done" data-testid="status-patch-complete"><Check size={14} /> retake added</div>}
           </div>
           <ExportPanel onExport={onExport} />
+          <DevInfo requests={requests} />
         </aside>
       </div>
     </main>
@@ -570,6 +630,15 @@ function App() {
   const [patchTarget, setPatchTarget] = useState<number | null>(null);
   const [patchBusy, setPatchBusy] = useState(false);
   const [patchError, setPatchError] = useState<string | null>(null);
+  // The frame picker: open for one candidate frame (before reconstruction) or for one page (after).
+  const [picker, setPicker] = useState<{ kind: 'frame'; index: number } | { kind: 'page'; pageNumber: number } | null>(null);
+  const [pickerBusy, setPickerBusy] = useState(false);
+  const [pickerError, setPickerError] = useState<string | null>(null);
+  // Developer view: the Gemini requests made for this document, newest first.
+  const [requests, setRequests] = useState<RequestInfo[]>([]);
+  const noteRequest = (label: string, usage: Usage | undefined) => {
+    if (usage) setRequests((list) => [{ label, usage }, ...list].slice(0, 6));
+  };
   const [cameraOpen, setCameraOpen] = useState(false);
   const [recording, setRecording] = useState(false);
   const [stream, setStream] = useState<MediaStream | null>(null);
@@ -636,6 +705,8 @@ function App() {
         throw new Error('No reconstructed pages were returned for this capture.');
       }
       const result = buildDoc(documentName, payload as ProcessDocumentResult, selectedFrames);
+      setRequests([]);
+      noteRequest(`whole document · ${selectedFrames.length} frames`, payload.usage);
       setAnalysis(result);
       setSelectedPageNumber(result.pages.find((page) => page.status === 'needs-review')?.pageNumber ?? result.pages[0].pageNumber);
       setProcessingStatus('Document reconstructed.');
@@ -713,6 +784,7 @@ function App() {
     setPatchTarget(null);
     setPatchBusy(false);
     setPatchError(null);
+    setPicker(null);
   };
 
   const handleExport = (format: string) => {
@@ -734,39 +806,76 @@ function App() {
     setView('patch');
   };
 
-  // Sends one retake photo to be rebuilt and swaps the result in for that page.
+  // Reads one page again from a new image (a retake photo, or another frame of the video) and swaps
+  // the result in for that page.
+  const rereadPage = async (doc: Doc, pageNumber: number, image: { dataUrl: string; width: number; height: number }, videoAt: number | null) => {
+    const response = await fetch('/api/process-page', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ documentName, pageNumber, dataUrl: image.dataUrl }),
+    });
+    const payload = await response.json().catch(() => null) as (Partial<ProcessPageResult> & { error?: string }) | null;
+    if (!response.ok) throw new Error(payload?.error || 'That image could not be analyzed. Please try again.');
+    if (!payload?.page) throw new Error('No page was returned for that image. Please try again.');
+
+    noteRequest(`page ${String(pageNumber).padStart(2, '0')} · ${videoAt === null ? 'retake photo' : 'frame from the video'}`, payload.usage);
+    const next = applyPatch(doc, pageNumber, payload.page, image, videoAt);
+    const page = next.pages.find((candidate) => candidate.pageNumber === pageNumber);
+    setAnalysis(next);
+    setSelectedPageNumber(pageNumber);
+    const label = String(pageNumber).padStart(2, '0');
+    setToast(page?.status === 'patched'
+      ? { message: `Page ${label} has been refreshed.`, tone: 'sage' }
+      : { message: `Page ${label} is updated, but is still a little hard to read. You can try another frame or photo.`, tone: 'amber' });
+  };
+
   const submitPatch = async (photo: Blob | string) => {
     if (!analysis || patchTarget === null) return;
-    const pageNumber = patchTarget;
     setPatchBusy(true);
     setPatchError(null);
     try {
-      const image = await prepareImage(photo);
-      const response = await fetch('/api/process-page', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ documentName, pageNumber, dataUrl: image.dataUrl }),
-      });
-      const payload = await response.json().catch(() => null) as (Partial<ProcessPageResult> & { error?: string }) | null;
-      if (!response.ok) throw new Error(payload?.error || 'That photo could not be analyzed. Please try again.');
-      if (!payload?.page) throw new Error('No page was returned for that photo. Please try again.');
-
-      const next = applyPatch(analysis, pageNumber, payload.page, image);
-      const page = next.pages.find((candidate) => candidate.pageNumber === pageNumber);
-      setAnalysis(next);
-      setSelectedPageNumber(pageNumber);
+      await rereadPage(analysis, patchTarget, await prepareImage(photo), null);
       setPatchTarget(null);
       setView('review');
-      const label = String(pageNumber).padStart(2, '0');
-      setToast(page?.status === 'patched'
-        ? { message: `Page ${label} has been refreshed.`, tone: 'sage' }
-        : { message: `Page ${label} is updated, but is still a little hard to read. You can try another photo.`, tone: 'amber' });
     } catch (error) {
       setPatchError(error instanceof Error ? error.message : 'That photo could not be analyzed. Please try again.');
     } finally {
       setPatchBusy(false);
     }
   };
+
+  // The user chose another frame in the picker.
+  const applyPickedFrame = async (frame: PickedFrame) => {
+    if (!picker) return;
+    if (picker.kind === 'frame') {
+      // Before reconstruction: just swap the candidate; nothing is sent yet.
+      setSelectedFrames((frames) => frames.map((old, index) => index === picker.index
+        ? { ...old, dataUrl: frame.dataUrl, width: frame.width, height: frame.height, timestamp: frame.timestamp, sharpness: frame.clarity, hand: frame.hand, picked: true }
+        : old));
+      setPicker(null);
+      return;
+    }
+    if (!analysis) return;
+    setPickerBusy(true);
+    setPickerError(null);
+    try {
+      await rereadPage(analysis, picker.pageNumber, frame, frame.timestamp);
+      setPicker(null);
+    } catch (error) {
+      setPickerError(error instanceof Error ? error.message : 'That frame could not be analyzed. Please try again.');
+    } finally {
+      setPickerBusy(false);
+    }
+  };
+
+  const openPicker = (target: NonNullable<typeof picker>) => {
+    setPickerError(null);
+    setPicker(target);
+  };
+
+  const pickerFrame = picker?.kind === 'frame' ? selectedFrames[picker.index] : null;
+  const pickerPage = picker?.kind === 'page' ? analysis?.pages.find((page) => page.pageNumber === picker.pageNumber) ?? null : null;
+  const pickerRange = pickerFrame?.range ?? (pickerPage?.video ? { from: pickerPage.video.from, to: pickerPage.video.to } : null);
 
   useEffect(() => {
     if (view === 'review') setRecentName(documentName);
@@ -777,9 +886,18 @@ function App() {
       <div className="page-wrap">
         <BrandHeader onReset={reset} />
         {view === 'home' && <HomeView onCamera={startCamera} onFile={handleFile} recentName={recentName} />}
-        {view === 'frames' && <FrameReviewView documentName={documentName} frames={selectedFrames} stats={selectionStats} onContinue={analyzeFrames} onReset={reset} />}
+        {view === 'frames' && (
+          <FrameReviewView
+            documentName={documentName}
+            frames={selectedFrames}
+            stats={selectionStats}
+            onPick={lastCapture ? (index) => openPicker({ kind: 'frame', index }) : null}
+            onContinue={analyzeFrames}
+            onReset={reset}
+          />
+        )}
         {view === 'processing' && <ProcessingView documentName={documentName} status={processingStatus} error={processingError} onRetry={selectedFrames.length ? analyzeFrames : lastCapture ? () => void beginProcessing(lastCapture.name, lastCapture) : null} onReset={reset} />}
-        {view === 'review' && analysis && <ReviewView documentName={documentName} analysis={analysis} selectedPageNumber={selectedPageNumber} onSelectPage={setSelectedPageNumber} onPatch={openPatch} onExport={handleExport} />}
+        {view === 'review' && analysis && <ReviewView documentName={documentName} analysis={analysis} selectedPageNumber={selectedPageNumber} onSelectPage={setSelectedPageNumber} onPatch={openPatch} onPickFrame={lastCapture ? (pageNumber) => openPicker({ kind: 'page', pageNumber }) : null} onExport={handleExport} requests={requests} />}
         {view === 'patch' && analysis && patchTarget !== null && (
           <PatchView
             key={patchTarget}
@@ -798,6 +916,21 @@ function App() {
           onStart={beginRecording}
           onStop={stopRecording}
           onClose={() => { stream?.getTracks().forEach((track) => track.stop()); setStream(null); setCameraOpen(false); }}
+        />
+      )}
+      {picker && lastCapture && pickerRange && (
+        <FramePicker
+          key={picker.kind === 'frame' ? `frame-${picker.index}` : `page-${picker.pageNumber}`}
+          file={lastCapture}
+          range={pickerRange}
+          current={pickerFrame?.timestamp ?? pickerPage?.video?.at ?? null}
+          eyebrow={`${picker.kind === 'frame' ? `candidate ${String(picker.index + 1).padStart(2, '0')}` : `page ${String(picker.pageNumber).padStart(2, '0')}`} · ${pickerRange.from.toFixed(1)}–${pickerRange.to.toFixed(1)} s`}
+          heading={pickerFrame ? 'Choose the clearest moment of this page.' : 'Choose a clearer frame for this page.'}
+          confirmLabel={pickerFrame ? 'use this frame' : 'read this frame'}
+          busy={pickerBusy}
+          error={pickerError}
+          onCancel={() => setPicker(null)}
+          onConfirm={(frame) => void applyPickedFrame(frame)}
         />
       )}
       {toast && <Toast message={toast.message} tone={toast.tone} />}

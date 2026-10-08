@@ -99,7 +99,15 @@ export const ProcessDocumentResponse = zod.object({
   "model": zod.string(),
   "inputTokens": zod.number().int(),
   "outputTokens": zod.number().int(),
-  "thinkingTokens": zod.number().int()
+  "thinkingTokens": zod.number().int(),
+  "keyIndex": zod.number().int().optional().describe('Which API key answered, counting from 1 (developer information).'),
+  "seconds": zod.number().optional().describe('Time from receiving the request to answering it, including failed attempts.'),
+  "attempts": zod.array(zod.object({
+  "model": zod.string(),
+  "key": zod.number().int(),
+  "outcome": zod.string(),
+  "seconds": zod.number()
+})).optional().describe('Every try, in order, with the model, key (from 1), outcome and seconds.')
 }).optional().describe('What this request used, for working out running costs.')
 })
 
@@ -171,7 +179,15 @@ export const ProcessPageResponse = zod.object({
   "model": zod.string(),
   "inputTokens": zod.number().int(),
   "outputTokens": zod.number().int(),
-  "thinkingTokens": zod.number().int()
+  "thinkingTokens": zod.number().int(),
+  "keyIndex": zod.number().int().optional().describe('Which API key answered, counting from 1 (developer information).'),
+  "seconds": zod.number().optional().describe('Time from receiving the request to answering it, including failed attempts.'),
+  "attempts": zod.array(zod.object({
+  "model": zod.string(),
+  "key": zod.number().int(),
+  "outcome": zod.string(),
+  "seconds": zod.number()
+})).optional().describe('Every try, in order, with the model, key (from 1), outcome and seconds.')
 }).optional().describe('What this request used, for working out running costs.')
 })
 
